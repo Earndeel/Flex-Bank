@@ -42,7 +42,7 @@ async function click(act,id,extra={}){
   await events.get('click')({target});
 }
 function submit(id,fields,dataset={}){
-  events.get('submit')({target:{id,fields,dataset},preventDefault(){}});
+  return events.get('submit')({target:{id,fields,dataset},preventDefault(){}});
 }
 function editorFields(state=saved()) {
   const {config,balances}=scenarioDefaults(state);
@@ -51,15 +51,36 @@ function editorFields(state=saved()) {
   config.stops.forEach((stop,i)=>{fields['stop-date-'+i]=stop.date;fields['stop-region-'+i]=stop.regionId;});
   return {fields,config};
 }
+test('première ouverture : setup bilingue, sans compte créé avant validation',async()=>{
+  assert.match(app(),/setup-screen/);assert.match(app(),/Créer mon espace/);assert.equal(values.has(STORAGE_KEY),false);
+  for(const n of '2589')await click('pin',n);assert.match(app(),/setup-screen/);assert.equal(values.has(STORAGE_KEY),false);
+  let prevented=false;events.get('keydown')({key:'8',preventDefault(){prevented=true;}});assert.equal(prevented,false);
+  await click('setup-language','en');assert.match(app(),/Create my space/);assert.match(app(),/Annual spending/);
+  await click('setup-language','fr');await click('setup-add-stop');assert.match(app(),/Séjour 2/);
+  await click('setup-remove-stop','1');assert.doesNotMatch(app(),/Séjour 2/);assert.equal(values.has(STORAGE_KEY),false);
+});
+test('setup : erreur sans sauvegarde, génération avec animation et identité personnalisée',async()=>{
+  const fields={'first-name':'Emma','last-name':'Durand',balance:'22000','annual-spending':'15000','setup-region-0':'paris','setup-date-0':'2026-07-10'};
+  await submit('setup-form',fields);assert.match(app(),/23 000/);assert.equal(values.has(STORAGE_KEY),false);assert.ok(app().includes('value="Emma"'));
+  fields.balance='28000';const generation=submit('setup-form',fields);assert.match(app(),/aria-busy="true"/);assert.match(app(),/setup-spinner/);await generation;
+  assert.doesNotMatch(app(),/setup-screen/);assert.match(app(),/Bonjour, Emma/);assert.match(app(),/>ED<\/div>/);
+  assert.equal(saved().profile.name,'Emma Durand');assert.equal(saved().wallets.EUR,2800000);assert.equal(saved().setup.annualSpending,1500000);
+});
 test('écran verrouillé, code incorrect puis accès par 2589',async()=>{
-  assert.match(app(),/Bonjour, Lucas/);
+  assert.match(app(),/Bonjour, Emma/);
   assert.doesNotMatch(app(),/Vos transactions/);
   for(const n of '0000')await click('pin',n);
   assert.match(elements.get('pin-error').textContent,/incorrect/);
   for(const n of '2589')await click('pin',n);
   assert.match(app(),/Solde/);
-  assert.match(app(),/Lucas Jouvençon/);
+  assert.match(app(),/Emma Durand/);
   assert.ok(assertState(saved()));
+});
+test('initiales et nom du setup dans l’accueil, le profil, les cartes et les coordonnées',async()=>{
+  await click('tab','home');assert.match(app(),/<span class="avatar">ED<\/span>/);assert.doesNotMatch(app(),/avatar-memoji/);
+  await click('profile');assert.match(sheet(),/Emma Durand/);assert.match(sheet(),/@emma.durand/);assert.match(sheet(),/Toujours activé/);
+  await click('tab','cards');assert.match(app(),/Emma Durand/);await click('card-details');assert.match(sheet(),/Emma Durand/);
+  await click('tab','home');await click('account-details');assert.match(sheet(),/Emma Durand/);await click('copy-account');assert.match(values.get('clipboard'),/DÉMONSTRATION — Emma Durand/);await click('close-sheet');
 });
 test('les raccourcis de l’accueil et les comptes restent accessibles sans changer le registre',async()=>{
   const before=saved();
@@ -256,7 +277,7 @@ test('contact, carte, gel, région, mode sombre et recherche',async()=>{
   await click('freeze');assert.equal(saved().cards.frozen,true);
   await click('select-location','bangkok');assert.equal(saved().location.regionId,'bangkok');
   assert.equal(saved().theme,'dark');
-  await click('toggle-setting','theme');assert.equal(saved().theme,'light');
+  await click('toggle-setting','theme');assert.equal(saved().theme,'dark');assert.match(sheet(),/Toujours activé/);assert.doesNotMatch(sheet(),/data-id="theme"/);
   await click('search');assert.match(app(),/Rechercher un lieu/);
   await click('filter','out');assert.match(app(),/Transactions/);
 });

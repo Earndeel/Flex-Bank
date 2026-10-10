@@ -1,4 +1,4 @@
-import {FLOOR,RATES,CURRENCIES,REGIONS,HISTORY_REVISION,dateKey,shiftDay,threeMonthsAgo,historyRegion,regionById,dailyCandidates,validScenario,scenarioRegion,formatMoney} from './core.js?v=9';
+import {FLOOR,RATES,CURRENCIES,REGIONS,HISTORY_REVISION,dateKey,shiftDay,threeMonthsAgo,historyRegion,regionById,dailyCandidates,validScenario,scenarioRegion,formatMoney} from './core.js?v=10';
 
 const clone=value=>JSON.parse(JSON.stringify(value));
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -45,13 +45,28 @@ function reconcileLedger(state,transactions,balances) {
   return result;
 }
 
-export function regenerateScenario(state,config,balances,now=new Date()) {
+// Optional setup target is allocated across real ledger entries in the current
+// calendar year. BigInt remainders preserve the requested total to the cent.
+function allocateAnnualSpending(transactions,target,timeZone,year) {
+  if(!Number.isSafeInteger(target)||target<0||target>1000000000)throw Error('Indiquez des dépenses annuelles entre 0 et 10 000 000 €.');
+  const expenses=transactions.filter(tx=>tx.amount<0&&dateKey(new Date(tx.timestamp),timeZone).startsWith(year+'-'));
+  const total=expenses.reduce((sum,tx)=>sum-tx.amount,0);
+  if(!total){if(target)throw Error('Aucune dépense ne peut encore être générée pour cette année. Réessayez plus tard.');return transactions;}
+  const allocations=expenses.map((tx,i)=>{const weighted=BigInt(-tx.amount)*BigInt(target),value=Number(weighted/BigInt(total));return {tx,i,value,remainder:weighted%BigInt(total)};});
+  let remaining=target-allocations.reduce((sum,item)=>sum+item.value,0);
+  for(const item of [...allocations].sort((a,b)=>a.remainder===b.remainder?a.i-b.i:a.remainder>b.remainder?-1:1)){if(!remaining)break;item.value++;remaining--;}
+  for(const {tx,value} of allocations){tx.amount=-value;if(tx.originalAmount!==undefined)tx.originalAmount=Math.round(value*RATES[tx.originalCurrency]);}
+  return transactions.filter(tx=>tx.amount!==0);
+}
+
+export function regenerateScenario(state,config,balances,now=new Date(),{annualSpending}={}) {
   if(!validScenario(config))throw Error('Vérifie les revenus, les dépenses et les dates du voyage (étapes distinctes, dans l’ordre).');
   const lastRegion=regionById(config.stops.at(-1).regionId),today=dateKey(now,lastRegion.tz),start=threeMonthsAgo(today);
   if(config.stops[0].date>start)throw Error('La première étape doit couvrir le début de l’historique : '+start+'.');
   if(config.stops.some(stop=>stop.date>today))throw Error('Les étapes de l’historique doivent être datées d’aujourd’hui ou avant.');
-  const generated=[];
+  let generated=[];
   for(let day=start;day<=today;day=shiftDay(day,1))for(const tx of dailyCandidates(day,scenarioRegion(config,day),config))if(Date.parse(tx.timestamp)<=now.getTime())generated.push(tx);
+  if(annualSpending!==undefined)generated=allocateAnnualSpending(generated,annualSpending,lastRegion.tz,today.slice(0,4));
   const retained=state.transactions.filter(t=>!t.automatic);
   const result=reconcileLedger(state,[...retained,...generated],balances);
   result.scenario=clone(config);result.historyStart=start;result.historyRevision=HISTORY_REVISION;

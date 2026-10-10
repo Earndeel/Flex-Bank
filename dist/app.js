@@ -1,14 +1,15 @@
-import {REFERENCE_ICONS,REFERENCE_AVATAR} from './reference-icons.js?v=1';
-import {getLanguage,getLocale,setLanguage,tr,localizeHTML} from './i18n.js?v=1';
+import {REFERENCE_ICONS} from './reference-icons.js?v=2';
+import {getLanguage,getLocale,setLanguage,tr,localizeHTML} from './i18n.js?v=2';
 import {
   FLOOR,STORAGE_KEY,PIN_HASH,RATES,CURRENCIES,REGIONS,CATEGORY_META,
-  initialState,migrateState,assertState,rollForward,dateKey,shiftDay,regionById,regionFromCoordinates,
+  initialState,assertState,rollForward,dateKey,shiftDay,regionById,regionFromCoordinates,
   sendMoney,topUp,exchange,pocketMove,monthMetrics,formatMoney,parseMoney,applyTransaction
-} from './core.js?v=9';
+} from './core.js?v=10';
 import {expenseMetrics,analyticsBreakdownMetrics,renderExpenseSummary,shiftExpensePeriod} from './expenses.js?v=4';
-import {SCENARIO_FIELDS,scenarioDefaults,scenarioFingerprint,regenerateScenario,changeScenarioBalances,renderScenarioEditor} from './scenario.js?v=3';
+import {SCENARIO_FIELDS,scenarioDefaults,scenarioFingerprint,regenerateScenario,changeScenarioBalances,renderScenarioEditor} from './scenario.js?v=4';
 
 import {displayMoney,dashboardMetrics,periodRange,creditProjection,EXPENSE_COLORS} from './ui-metrics.js?v=2';
+import {setupDefaults,restoreProfile,profileIdentity,readSetupDraft,addSetupStop,createSetupState,renderSetup} from './setup.js?v=1';
 
 const ICONS = {
   brandHome:'<path d="M7 21V4h12M7 11h9" stroke-width="3.5"/>',
@@ -66,9 +67,16 @@ const ICONS = {
 };
 const icon = (name,extra='') => `<svg class="icon ${extra}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]||ICONS.cards}</svg>`;
 const esc = value => String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let state,storageAvailable=true;
-try { const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'null'); state=assertState(saved)?migrateState(saved):initialState(); }
-catch { state=initialState(); storageAvailable=false; }
+let state=null,storageAvailable=true;
+try { state=restoreProfile(localStorage.getItem(STORAGE_KEY)); }
+catch { storageAvailable=false; }
+let needsSetup=!state,setupDraft=setupDefaults(),setupError='',setupBusy=false;
+const identity=()=>profileIdentity(state);
+function captureSetupDraft() {
+  const form=document.getElementById('setup-form');
+  if(form)setupDraft=readSetupDraft(new FormData(form),setupDraft);
+  return setupDraft;
+}
 let unlocked=false,tab='home',view='main',filter='all',search='',pin='',pinChecking=false,attempts=0,blockedUntil=0;
 let activeMonth=dateKey(new Date()).slice(0,7),showCard=false,hiddenAt=0,lastActive=Date.now(),toastTimer,previousFocus;
 let expensesScope='spending';
@@ -88,6 +96,7 @@ const currentRegion=()=>regionById(state.location.regionId);
 const nowDay=()=>dateKey(new Date(),currentRegion().tz);
 const ordered=()=>[...state.transactions].sort((a,b)=>b.timestamp.localeCompare(a.timestamp));
 function persist() {
+  if(!state)return;
   try { localStorage.setItem(STORAGE_KEY,JSON.stringify(state));storageAvailable=true; }
   catch { storageAvailable=false; toast('La sauvegarde locale est indisponible. Cette session reste utilisable.'); }
 }
@@ -105,15 +114,15 @@ function currencyFlag(currency) {
 }
 function theme() {
   applyLanguage();
-  document.body.classList.toggle('dark',state.theme==='dark');
-  document.querySelector('meta[name="theme-color"]').content=state.theme==='dark'?'#000000':'#f7f7f7';
+  document.body.classList.toggle('dark',true);
+  document.querySelector('meta[name="theme-color"]').content='#000000';
 }
 function toast(message) {
   const el=document.getElementById('toast');el.textContent=tr(message);el.classList.add('show');
   clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3700);
 }
 function topbar(invest=false) {
-  return `<header class="topbar"><button class="profile-button" data-act="profile" aria-label="Profil de Lucas Jouvençon"><span class="avatar">${REFERENCE_AVATAR}</span></button><button class="header-search" data-act="${invest?'invest-search':'search'}" aria-label="${invest?'Explorer les instruments':'Rechercher une transaction'}">${icon('search')}<span>Search</span></button><div class="top-tools"><button class="icon-button" data-act="tab" data-id="analytics" aria-label="Analyse des dépenses">${icon('chartSolid')}</button><button class="icon-button" data-act="${invest?'invest-market':'tab'}" ${invest?'':'data-id="cards"'} aria-label="${invest?'Explorer les marchés de démonstration':'Vos cartes'}">${icon(invest?'globe':'cards')}</button></div></header>`;
+  return `<header class="topbar"><button class="profile-button" data-act="profile" aria-label="${esc(tr('Profil')+' '+identity().name)}" data-i18n-skip><span class="avatar">${esc(identity().initials)}</span></button><button class="header-search" data-act="${invest?'invest-search':'search'}" aria-label="${invest?'Explorer les instruments':'Rechercher une transaction'}">${icon('search')}<span>Search</span></button><div class="top-tools"><button class="icon-button" data-act="tab" data-id="analytics" aria-label="Analyse des dépenses">${icon('chartSolid')}</button><button class="icon-button" data-act="${invest?'invest-market':'tab'}" ${invest?'':'data-id="cards"'} aria-label="${invest?'Explorer les marchés de démonstration':'Vos cartes'}">${icon(invest?'globe':'cards')}</button></div></header>`;
 }
 function nav() {
   const tabs=[['home','brandHome','Home'],['credit','coins','Credit'],['invest','trend','Invest'],['payments','arrows','Payments'],['crypto','bitcoin','Crypto'],['points','rewards','FlexPoints']];
@@ -187,7 +196,7 @@ function home() {
 
 function cardVisual(extra=null) {
   const frozen=extra?extra.frozen:state.cards.frozen,last4=extra?extra.last4:state.cards.last4;
-  return `<div class="card-visual ${frozen?'frozen':''}"><div class="card-top"><span class="card-brand">flex</span></div><div class="card-chip" aria-hidden="true">${Array.from({length:6},()=>'<i></i>').join('')}</div><div class="card-number">${showCard?'0000 0000':'•••• •••• ••••'} ${esc(last4)}</div><div class="card-bottom"><span class="card-holder">Lucas Jouvençon<br><span style="display:block;margin-top:6px;font-size:8px;color:#8b9ab0">CARTE ${extra?.type==='disposable'?'ÉPHÉMÈRE':'VIRTUELLE'}</span></span><span class="card-mark" aria-hidden="true"></span></div></div>`;
+  return `<div class="card-visual ${frozen?'frozen':''}"><div class="card-top"><span class="card-brand">flex</span></div><div class="card-chip" aria-hidden="true">${Array.from({length:6},()=>'<i></i>').join('')}</div><div class="card-number">${showCard?'0000 0000':'•••• •••• ••••'} ${esc(last4)}</div><div class="card-bottom"><span class="card-holder"><span data-i18n-skip>${esc(identity().name)}</span><br><span style="display:block;margin-top:6px;font-size:8px;color:#8b9ab0">CARTE ${extra?.type==='disposable'?'ÉPHÉMÈRE':'VIRTUELLE'}</span></span><span class="card-mark" aria-hidden="true"></span></div></div>`;
 }
 function toggleRow(label,description,key,enabled,i) {
   return `<div class="setting-row"><div class="setting-left">${icon(i)}<div><div class="setting-name">${label}</div><div class="setting-description">${description}</div></div></div><button class="toggle ${enabled?'on':''}" data-act="toggle-setting" data-id="${key}" role="switch" aria-checked="${enabled}" aria-label="${label}"></button></div>`;
@@ -294,10 +303,11 @@ function allTransactions() {
 }
 function lockHTML() {
   const cooldown=blockedUntil>Date.now();
-  return `<section class="lock-screen"><div class="lock-top"><span class="lock-brand">flex</span></div><div class="lock-center"><div class="lock-avatar">LJ</div><h1>Bonjour, Lucas.</h1><p>Votre espace personnel vous attend.<br>Saisissez votre code à 4 chiffres.</p><div class="pin-dots" aria-label="${pin.length} chiffres saisis">${[0,1,2,3].map(i=>`<span class="pin-dot ${i<pin.length?'filled':''}"></span>`).join('')}</div><div id="pin-error" class="pin-error" role="status">${cooldown?'Réessayez dans '+Math.ceil((blockedUntil-Date.now())/1000)+' s':''}</div></div><div class="keypad">${[['1',''],['2','ABC'],['3','DEF'],['4','GHI'],['5','JKL'],['6','MNO'],['7','PQRS'],['8','TUV'],['9','WXYZ']].map(([n,l])=>`<button class="key" data-act="pin" data-id="${n}" aria-label="${n}" ${cooldown?'disabled':''}>${n}<small>${l}</small></button>`).join('')}<button class="key subtle" data-act="pin-help">Aide</button><button class="key" data-act="pin" data-id="0" aria-label="0" ${cooldown?'disabled':''}>0</button><button class="key subtle" data-act="pin-delete" aria-label="Effacer le dernier chiffre">${icon('backspace')}</button></div></section>`;
+  return `<section class="lock-screen"><div class="lock-top"><span class="lock-brand">flex</span></div><div class="lock-center"><div class="lock-avatar" data-i18n-skip>${esc(identity().initials)}</div><h1 data-i18n-skip>${esc((getLanguage()==='fr'?'Bonjour, ':'Hi, ')+identity().firstName+'.')}</h1><p>Votre espace personnel vous attend.<br>Saisissez votre code à 4 chiffres.</p><div class="pin-dots" aria-label="${pin.length} chiffres saisis">${[0,1,2,3].map(i=>`<span class="pin-dot ${i<pin.length?'filled':''}"></span>`).join('')}</div><div id="pin-error" class="pin-error" role="status">${cooldown?'Réessayez dans '+Math.ceil((blockedUntil-Date.now())/1000)+' s':''}</div></div><div class="keypad">${[['1',''],['2','ABC'],['3','DEF'],['4','GHI'],['5','JKL'],['6','MNO'],['7','PQRS'],['8','TUV'],['9','WXYZ']].map(([n,l])=>`<button class="key" data-act="pin" data-id="${n}" aria-label="${n}" ${cooldown?'disabled':''}>${n}<small>${l}</small></button>`).join('')}<button class="key subtle" data-act="pin-help">Aide</button><button class="key" data-act="pin" data-id="0" aria-label="0" ${cooldown?'disabled':''}>0</button><button class="key subtle" data-act="pin-delete" aria-label="Effacer le dernier chiffre">${icon('backspace')}</button></div></section>`;
 }
 function render() {
   theme();
+  if(needsSetup){root.innerHTML=localizeHTML(renderSetup(setupDraft,{error:setupError,busy:setupBusy,language:getLanguage()}));return;}
   const disclosure=state.scenario?'<p class="scenario-disclosure">Scénario de démonstration · montants et opérations fictifs</p>':'';
   if(!unlocked){root.innerHTML=localizeHTML(lockHTML()+(state.scenario?'<p class="scenario-disclosure scenario-locked-disclosure">Scénario de démonstration · aucun compte réel</p>':''));return;}
   const content=view==='expenses'?expenses():view==='analytics-overview'?analyticsOverview():view==='transactions'?allTransactions():({home,cards,payments,savings,analytics,invest,credit,crypto:cryptoView,points}[tab]||home)();
@@ -348,13 +358,13 @@ function transactionSheet(id) {
 }
 function accountDetailsSheet() {
   const isEUR=state.currency==='EUR';
-  openSheet('Coordonnées de démonstration',`<p class="sheet-sub">Coordonnées fictives, non utilisables pour un virement.</p><div class="details-list">${detailsRow('Titulaire','Lucas Jouvençon')}${detailsRow('Compte',state.currency+' · Flex démo')}${detailsRow(isEUR?'IBAN fictif':'Référence de test',accountReference())}${detailsRow('Établissement','Flex — Démonstration')}</div><div class="info-box neutral">Aucun compte bancaire réel. Ces coordonnées ne permettent pas de recevoir un virement.</div><button class="primary-button" data-act="copy-account">${icon('copy')}Copier ${isEUR?'l’IBAN fictif':'la référence'}</button>`);
+  openSheet('Coordonnées de démonstration',`<p class="sheet-sub">Coordonnées fictives, non utilisables pour un virement.</p><div class="details-list">${detailsRow('Titulaire',identity().name)}${detailsRow('Compte',state.currency+' · Flex démo')}${detailsRow(isEUR?'IBAN fictif':'Référence de test',accountReference())}${detailsRow('Établissement','Flex — Démonstration')}</div><div class="info-box neutral">Aucun compte bancaire réel. Ces coordonnées ne permettent pas de recevoir un virement.</div><button class="primary-button" data-act="copy-account">${icon('copy')}Copier ${isEUR?'l’IBAN fictif':'la référence'}</button>`);
 }
 
 function profileSheet() {
-  openSheet('Votre espace',`<div class="profile-button" style="margin:0 0 20px"><span class="avatar" style="width:57px;height:57px;border-radius:20px">LJ</span><span><span style="display:block;font-size:17px;font-weight:600">Lucas Jouvençon</span><span class="profile-caption" style="display:block">@lucas.j · Plus</span></span></div><div class="panel">
+  openSheet('Votre espace',`<div class="profile-button" style="margin:0 0 20px"><span class="avatar" style="width:57px;height:57px;border-radius:50%" data-i18n-skip>${esc(identity().initials)}</span><span><span style="display:block;font-size:17px;font-weight:600" data-i18n-skip>${esc(identity().name)}</span><span class="profile-caption" style="display:block" data-i18n-skip>@${esc(identity().handle)} · Plus</span></span></div><div class="panel">
   <button class="setting-row language-setting" data-act="language"><span class="setting-left">${icon('globe')}<span><span class="setting-name">Langue</span><span class="setting-description" data-i18n-skip>${getLanguage()==='fr'?'Français':'English'}</span></span></span>${icon('chevron')}</button>
-  ${toggleRow('Mode sombre','Adaptez l’interface à votre préférence','theme',state.theme==='dark','moon')}
+  <div class="setting-row"><span class="setting-left">${icon('moon')}<span><span class="setting-name">Mode sombre</span><span class="setting-description">Toujours activé</span></span></span><span class="setting-status">${icon('check')}</span></div>
   ${toggleRow('Activité quotidienne','Ajouts automatiques à l’ouverture de l’app','autoSimulation',state.autoSimulation,'repeat')}
   ${toggleRow('Notifications dans l’app','Informer des nouvelles opérations','notify',state.notify,'bell')}
   <button class="editor-launch" data-act="editor"><span class="setting-left">${icon('settings')}<span><span class="setting-name" style="display:block">Mode édition</span><span class="setting-description" style="display:block">Soldes, voyages et historique de démonstration</span></span></span>${icon('chevron')}</button>
@@ -383,7 +393,7 @@ function locationSheet() {
   openSheet('Votre localisation',`<p class="sheet-sub">La région détermine les nouveaux libellés de commerces, la devise locale et les horaires. Les anciens paiements conservent leur lieu.</p><button class="primary-button" data-act="geolocate">${icon('location')}Utiliser ma position</button><p style="font-size:11px;color:var(--sub);margin:22px 0 12px">OU CHOISIR UNE VILLE</p><div class="transactions">${REGIONS.map(r=>`<button class="tx-row" data-act="select-location" data-id="${r.id}"><span style="font-size:24px;width:33px">${r.flag}</span><span class="tx-body"><span class="tx-name" style="display:block">${r.city}</span><span class="tx-sub" style="display:block">${r.country} · ${r.currency}</span></span>${currentRegion().id===r.id?icon('check'):icon('chevron')}</button>`).join('')}</div><p class="demo-footnote">La position sert uniquement à choisir une région.<br>Les coordonnées exactes ne sont ni stockées ni envoyées par Flex.</p>`);
 }
 function cardDetailsSheet() {
-  openSheet('Votre carte virtuelle',`<div class="details-list">${detailsRow('Titulaire','Lucas Jouvençon')}${detailsRow('Numéro',showCard?'0000 0000 0428':'•••• •••• 0428')}${detailsRow('Expiration','09/29')}${detailsRow('Code de sécurité','•••')}${detailsRow('État',state.cards.frozen?'Gelée':'Active')}</div><div class="info-box neutral">Carte virtuelle de votre compte.</div><button class="primary-button" data-act="reveal-card">${icon(showCard?'eyeOff':'eye')}${showCard?'Masquer les détails':'Afficher les détails'}</button>`);
+  openSheet('Votre carte virtuelle',`<div class="details-list">${detailsRow('Titulaire',identity().name)}${detailsRow('Numéro',showCard?'0000 0000 0428':'•••• •••• 0428')}${detailsRow('Expiration','09/29')}${detailsRow('Code de sécurité','•••')}${detailsRow('État',state.cards.frozen?'Gelée':'Active')}</div><div class="info-box neutral">Carte virtuelle de votre compte.</div><button class="primary-button" data-act="reveal-card">${icon(showCard?'eyeOff':'eye')}${showCard?'Masquer les détails':'Afficher les détails'}</button>`);
 }
 function pocketSheet(id) {
   const p=state.pockets.find(p=>p.id===id);if(!p)return;
@@ -507,6 +517,17 @@ document.addEventListener('click',async event=>{
   const b=event.target.closest('[data-act]');if(!b||b.disabled)return;
   const act=b.dataset.act,id=b.dataset.id;
   if(act==='close-sheet'){closeSheet();return;}
+  if(needsSetup){
+    if(setupBusy)return;
+    try{
+      captureSetupDraft();setupError='';
+      if(act==='setup-language')setLanguage(id);
+      else if(act==='setup-add-stop')setupDraft=addSetupStop(setupDraft);
+      else if(act==='setup-remove-stop'){const index=Number(id);if(Number.isInteger(index)&&index>0&&index<setupDraft.stops.length)setupDraft.stops.splice(index,1);}
+      else return;
+    }catch(e){setupError=e.message||'Vérifie les informations saisies.';}
+    render();return;
+  }
   if(!unlocked){
     if(act==='pin')await pinInput(id);
     else if(act==='pin-delete'){pin=pin.slice(0,-1);render();}
@@ -581,7 +602,7 @@ document.addEventListener('click',async event=>{
       case'request':requestSheet();break;
       case'more':moreSheet();break;
       case'account-details':accountDetailsSheet();break;
-      case'copy-account':await copy((getLanguage()==='fr'?'DÉMONSTRATION':'DEMONSTRATION')+' — Lucas Jouvençon — '+accountReference()+' — '+(state.currency==='EUR'?tr('IBAN fictif'):tr('Référence de test'))+(getLanguage()==='fr'?', non utilisable pour un virement.':', not usable for a transfer.'),'Coordonnées de démonstration copiées.');break;
+      case'copy-account':await copy((getLanguage()==='fr'?'DÉMONSTRATION':'DEMONSTRATION')+' — '+identity().name+' — '+accountReference()+' — '+(state.currency==='EUR'?tr('IBAN fictif'):tr('Référence de test'))+(getLanguage()==='fr'?', non utilisable pour un virement.':', not usable for a transfer.'),'Coordonnées de démonstration copiées.');break;
       case'all-transactions':case'search':view='transactions';search='';filter='all';closeSheet();render();window.scrollTo({top:0});if(act==='search')document.getElementById('tx-search')?.focus();break;
       case'back-main':view='main';tab='home';closeSheet();render();window.scrollTo({top:0});break;
       case'filter':filter=id;render();break;
@@ -595,7 +616,7 @@ document.addEventListener('click',async event=>{
       case'reveal-card':showCard=!showCard;render();cardDetailsSheet();break;
       case'card-limit':limitSheet();break;
       case'toggle-setting':
-        if(id==='theme'){state.theme=state.theme==='dark'?'light':'dark';}
+        if(id==='theme'){state.theme='dark';}
         else if(['online','international'].includes(id)){state.cards[id]=!state.cards[id];}
         else if(['autoSimulation','notify'].includes(id)){
           state[id]=!state[id];
@@ -631,13 +652,25 @@ document.addEventListener('click',async event=>{
       case'install':installSheet();break;
       case'lock':lock();break;
       case'reset':openSheet('Réinitialiser les données ?',`<p class="sheet-sub">L’historique local, vos poches, contacts et cartes supplémentaires seront remplacés par l’historique de départ.</p><button class="primary-button" data-act="confirm-reset">Réinitialiser les données</button><button class="secondary-button" data-act="close-sheet">Conserver mes données</button>`);break;
-      case'confirm-reset':{const oldTheme=state.theme;state=initialState();state.theme=oldTheme;tab='home';view='main';activeMonth=nowDay().slice(0,7);persist();closeSheet();render();toast('Nouvel historique créé.');break;}
+      case'confirm-reset':{const oldProfile={...state.profile};state=initialState();state.profile=oldProfile;state.theme='dark';tab='home';view='main';activeMonth=nowDay().slice(0,7);persist();closeSheet();render();toast('Nouvel historique créé.');break;}
     }
   }catch(e){error(e.message||'Cette action est indisponible.');}
 });
-document.addEventListener('submit',event=>{
+document.addEventListener('submit',async event=>{
   const form=event.target;if(!form.id.endsWith('-form'))return;
-  event.preventDefault();if(!unlocked)return;
+  event.preventDefault();
+  if(form.id==='setup-form'&&needsSetup){
+    if(setupBusy)return;
+    setupDraft=readSetupDraft(new FormData(form),setupDraft);setupError='';setupBusy=true;render();
+    try{
+      await new Promise(resolve=>setTimeout(resolve,80));
+      const candidate=createSetupState(setupDraft);
+      state=candidate;needsSetup=false;persist();window.scrollTo({top:0});
+    }catch(e){setupError=e.message||'Vérifie les informations saisies.';}
+    finally{setupBusy=false;render();}
+    return;
+  }
+  if(!unlocked||needsSetup)return;
   const f=new FormData(form),cents=parseMoney(f.get('amount'));lastActive=Date.now();
   try{
     switch(form.id){
@@ -711,9 +744,9 @@ document.addEventListener('input',event=>{
   if(event.target.closest('#exchange-form'))refreshExchangePreview();
   if(event.target.id==='limit')document.getElementById('limit-value').textContent=localizedMoney(Math.round(Number(event.target.value)*100));
 });
-document.addEventListener('change',event=>{if(event.target.closest('#exchange-form'))refreshExchangePreview();});
+document.addEventListener('change',event=>{if(event.target.closest('#exchange-form'))refreshExchangePreview();if(needsSetup&&event.target.name?.startsWith('setup-region-')){captureSetupDraft();render();}});
 document.addEventListener('keydown',event=>{
-  if(!unlocked&&!event.ctrlKey&&!event.metaKey&&!event.altKey){
+  if(!needsSetup&&!unlocked&&!event.ctrlKey&&!event.metaKey&&!event.altKey){
     if(/^\d$/.test(event.key)){event.preventDefault();pinInput(event.key);}
     else if(event.key==='Backspace'){event.preventDefault();pin=pin.slice(0,-1);render();}
   }
@@ -742,7 +775,7 @@ setInterval(()=>{
 },60000);
 window.addEventListener('offline',()=>toast('Mode hors ligne · votre espace reste disponible.'));
 window.addEventListener('online',()=>toast('Connexion rétablie.'));
-if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js?v=11').catch(()=>{});}
+if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js?v=12').catch(()=>{});}
 theme();persist();render();
 window.__flexReady=true;
 if(window.visualViewport){

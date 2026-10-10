@@ -19,7 +19,7 @@ Flex possède sa propre identité visuelle. Les soldes, comptes, cartes, commerc
 - Génération quotidienne déterministe, reprise à l’ouverture et vérification des nouveaux événements chaque minute lorsque l’app est ouverte.
 - Trois mois calendaires glissants d’historique initial, avec enseignes et abonnements variés par ville.
 - Écran de chargement animé, récupération en cas d’erreur et prise en compte de la réduction des animations.
-- Mode sombre par défaut et cache hors ligne.
+- Mode sombre permanent et cache hors ligne.
 
 Les données sont conservées dans le stockage local du navigateur, sans synchronisation entre appareils. Le code local est un verrou d’interface ; l’accès au Site est privé et protégé séparément par l’hébergement.
 
@@ -27,7 +27,7 @@ Le compte EUR conserve au minimum 23 000,01 €. Toute opération qui franchirai
 
 Les taux de change sont fixes et ne constituent pas des cours réels. Les opérations programmées s’exécutent lors de la prochaine ouverture après leur date, sous réserve du solde disponible. L’activité ne s’exécute pas en arrière-plan quand l’app est fermée.
 
-La migration de la première version complète l’historique ancien et met à jour les libellés sans supprimer les opérations personnelles, contacts, poches ou cartes supplémentaires. Les soldes intermédiaires sont recalculés avec le même seuil minimum. La préférence sombre s’applique une fois ; le choix ultérieur du thème est conservé.
+La migration de la première version complète l’historique ancien et met à jour les libellés sans supprimer les opérations personnelles, contacts, poches ou cartes supplémentaires. Les soldes intermédiaires sont recalculés avec le même seuil minimum. Le mode sombre est désormais permanent ; les autres préférences et le profil sont conservés.
 
 Les libellés de commerces mélangent enseignes existantes et noms illustratifs. Le parcours historique Bangkok, France puis Égypte est reconstitué.
 
@@ -66,3 +66,9 @@ Analytics présente les cartes Dépenses, Revenus, Flux net et Actifs. Chaque ca
 Accueil, Analytics et dépenses reprennent les mesures des trois captures fournies. Les icônes, le R de navigation et l’avatar sont des tracés SVG isolés ; aucun historique, montant ou IBAN des captures n’est intégré. Le drapeau EUR est un SVG à douze étoiles.
 
 Le profil contient un choix Français / English, mémorisé avec `flex-language-v1`, séparément du registre bancaire fictif. Le choix actualise les libellés, les dates et les montants ; les cartes Analytics et leurs graphiques lisent le même registre sans modifier les opérations. Les actifs montrent les soldes actuels, sans historique d’actifs inventé. Le rendu Safari sur appareil n’a pas été vérifié.
+
+## Première ouverture
+
+Un navigateur sans registre local affiche le setup avant de générer des données : prénom, nom, solde EUR, Spent annuel et séjours datés. Le total annuel saisi correspond exactement aux dépenses de l’année actuelle dans le registre des trois derniers mois ; les nouvelles journées ajoutent ensuite leur activité. Le solde d’ouverture et les revenus réguliers sont calculés pour préserver la réserve de 23 000,01 €, sans crédit de compensation.
+
+Le profil et son historique restent locaux au navigateur. Les visiteurs déjà configurés conservent leurs données. Le code d’accès reste **2589**. Le mode sombre est permanent, et les avatars utilisent les initiales du profil.

@@ -245,7 +245,7 @@ export function threeMonthsAgo(key) {
 export function historyRegion(key,today) {
   return key>=shiftDay(today,-1)?'aswan':key>=shiftDay(today,-4)?'marsa':key>=shiftDay(today,-33)?'paris':'bangkok';
 }
-export function initialState(now = new Date()) {
+export function initialState(now = new Date(), {generateHistory=true} = {}) {
   const today = dateKey(now), start=threeMonthsAgo(today);
   const state = {
     version:VERSION, createdAt:now.toISOString(), profile:{ name:'Lucas Jouvençon', initials:'LJ', handle:'lucas.j', plan:'Plus' },
@@ -266,7 +266,7 @@ export function initialState(now = new Date()) {
     ],
     schedules:[], requests:[], budget:120000, notify:true
   };
-  for (let key=start;key<=today;key=shiftDay(key,1)) {
+  if(generateHistory)for (let key=start;key<=today;key=shiftDay(key,1)) {
     const region=historyRegion(key,today);
     for (const tx of dailyCandidates(key,region)) if (new Date(tx.timestamp) <= now) applyTransaction(state,tx);
   }
