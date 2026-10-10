@@ -1,5 +1,5 @@
-const CACHE = 'luma-v7';
-const FILES = ['./scenario.js?v=1','./editor.css?v=1','./expenses.js?v=1','./expenses.css?v=1','./','./index.html','./styles.css?v=7','./core.js?v=7','./app.js?v=7','./startup.js?v=7','./icon-192.png?v=7','./icon-512.png?v=7','./apple-touch-icon.png?v=7','./manifest.webmanifest?v=7'];
+const CACHE = 'luma-v8';
+const FILES = ['./design.css?v=8','./scenario.js?v=2','./editor.css?v=1','./expenses.js?v=1','./expenses.css?v=1','./','./index.html','./styles.css?v=8','./core.js?v=8','./app.js?v=8','./startup.js?v=8','./icon-192.png?v=8','./icon-512.png?v=8','./apple-touch-icon.png?v=8','./manifest.webmanifest?v=8'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(FILES)).then(()=>self.skipWaiting()));
 });

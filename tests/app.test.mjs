@@ -61,6 +61,29 @@ test('écran verrouillé, code incorrect puis accès par 2589',async()=>{
   assert.match(app(),/Lucas Jouvençon/);
   assert.ok(assertState(saved()));
 });
+test('les raccourcis de l’accueil et les comptes restent accessibles sans changer le registre',async()=>{
+  const before=saved();
+  assert.match(app(),/class="header-search"/);assert.match(app(),/class="accounts-pill"/);
+  assert.match(app(),/class="transactions recent-transactions"/);assert.match(app(),/class="home-widgets"/);
+  await click('accounts');assert.match(sheet(),/Vos comptes/);await click('close-sheet');
+  for(const currency of ['USD','GBP','EGP','THB','EUR']){
+    await click('select-account',currency);assert.match(app(),new RegExp('Personnel · '+currency));
+  }
+  assert.deepEqual(saved(),before);
+  await click('expenses',undefined,{period:'month'});assert.match(app(),/expenses-screen/);
+  assert.match(app(),/data-id="month" class="is-active"/);
+  await click('expenses-back');await click('tab','home');
+  await click('search');assert.match(app(),/Transactions/);await click('tab','home');
+  assert.deepEqual(saved(),before);
+});
+test('le masquage retire les chiffres et la courbe du nouvel accueil',async()=>{
+  const before=saved();assert.match(app(),/class="widget-line"/);
+  await click('hide');assert.equal(saved().hideBalance,true);
+  assert.doesNotMatch(app(),/class="widget-line"/);
+  assert.match(app(),/Afficher les montants/);
+  assert.match(app(),/<strong>••••<\/strong>/);
+  await click('hide');assert.deepEqual(saved(),before);assert.match(app(),/class="widget-line"/);
+});
 test('les cinq onglets et tous les principaux dialogues rendent sans erreur',async()=>{
   for(const [id,expected] of [['home','Vos transactions'],['cards','Vos cartes'],['payments','Paiements'],['savings','Vos poches'],['analytics','Votre argent']]){
     await click('tab',id);assert.match(app(),new RegExp(expected));

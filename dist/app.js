@@ -2,11 +2,13 @@ import {
   FLOOR,STORAGE_KEY,PIN_HASH,RATES,CURRENCIES,REGIONS,CATEGORY_META,
   initialState,migrateState,assertState,rollForward,dateKey,shiftDay,regionById,regionFromCoordinates,
   sendMoney,topUp,exchange,pocketMove,monthMetrics,formatMoney,parseMoney,applyTransaction
-} from './core.js?v=7';
+} from './core.js?v=8';
 import {expenseMetrics,renderExpenseSummary,shiftExpensePeriod} from './expenses.js?v=1';
-import {SCENARIO_FIELDS,scenarioDefaults,scenarioFingerprint,regenerateScenario,changeScenarioBalances,renderScenarioEditor} from './scenario.js?v=1';
+import {SCENARIO_FIELDS,scenarioDefaults,scenarioFingerprint,regenerateScenario,changeScenarioBalances,renderScenarioEditor} from './scenario.js?v=2';
 
 const ICONS = {
+  brandHome:'<path d="M7 3v18h12" stroke-width="3"/>',
+  chartSolid:'<rect x="3" y="11" width="4" height="10" rx="1.5" fill="currentColor" stroke="none"/><rect x="10" y="3" width="4" height="18" rx="1.5" fill="currentColor" stroke="none"/><rect x="17" y="7" width="4" height="14" rx="1.5" fill="currentColor" stroke="none"/>',
   home:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',
   cards:'<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18M7 15h4"/>',
   arrows:'<path d="M4 7h16m-4-4 4 4-4 4M20 17H4m4-4-4 4 4 4"/>',
@@ -70,18 +72,18 @@ function persist() {
 }
 function theme() {
   document.body.classList.toggle('dark',state.theme==='dark');
-  document.querySelector('meta[name="theme-color"]').content=state.theme==='dark'?'#111721':'#f8f9fc';
+  document.querySelector('meta[name="theme-color"]').content=state.theme==='dark'?'#09090b':'#f7f7f7';
 }
 function toast(message) {
   const el=document.getElementById('toast');el.textContent=message;el.classList.add('show');
   clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3700);
 }
 function topbar() {
-  return `<header class="topbar"><button class="profile-button" data-act="profile" aria-label="Profil de Lucas Jouvençon"><span class="avatar">LJ</span><span><span class="profile-name">Lucas Jouvençon</span><span class="profile-caption" style="display:block">Compte personnel</span></span></button><div class="top-tools"><button class="icon-button" data-act="search" aria-label="Rechercher une transaction">${icon('search')}</button><button class="icon-button" data-act="notifications" aria-label="Notifications">${icon('bell')}</button></div></header>`;
+  return `<header class="topbar"><button class="profile-button" data-act="profile" aria-label="Profil de Lucas Jouvençon"><span class="avatar">LJ</span></button><button class="header-search" data-act="search" aria-label="Rechercher une transaction">${icon('search')}<span>Rechercher</span></button><div class="top-tools"><button class="icon-button" data-act="tab" data-id="analytics" aria-label="Analyse des dépenses">${icon('chartSolid')}</button><button class="icon-button" data-act="tab" data-id="cards" aria-label="Vos cartes">${icon('cards')}</button></div></header>`;
 }
 function nav() {
-  const tabs=[['home','home','Accueil'],['cards','cards','Cartes'],['payments','arrows','Paiements'],['savings','pocket','Épargne'],['analytics','chart','Analyse']];
-  return `<nav class="nav" aria-label="Navigation principale">${tabs.map(([id,i,label])=>`<button class="nav-item ${tab===id&&view==='main'?'active':''}" data-act="tab" data-id="${id}" ${tab===id&&view==='main'?'aria-current="page"':''}>${icon(i)}<span>${label}</span></button>`).join('')}</nav>`;
+  const tabs=[['home','brandHome','Accueil'],['cards','cards','Cartes'],['payments','arrows','Paiements'],['savings','pocket','Épargne'],['analytics','chart','Analyse']];
+  return `<nav class="nav" aria-label="Navigation principale">${tabs.map(([id,i,label])=>`<button class="nav-item ${tab===id?'active':''}" data-act="tab" data-id="${id}" ${tab===id?'aria-current="page"':''}>${icon(i)}<span>${label}</span></button>`).join('')}</nav>`;
 }
 function categoryMeta(t) {return CATEGORY_META[t.category]||CATEGORY_META.transfer;}
 function txRow(t) {
@@ -107,16 +109,28 @@ function balanceHTML() {
   const tail=parts.filter(p=>!['integer','group'].includes(p.type)).map(p=>p.value).join('');
   return esc(before)+'<span class="decimals">'+esc(tail)+'</span>';
 }
+function widgetSpendingChart(metrics) {
+  if(state.hideBalance)return '';
+  const days=Math.max(Number(nowDay().slice(-2)),...metrics.spending.map(t=>Number(dateKey(new Date(t.timestamp),regionById(t.region).tz).slice(-2)))),daily=Array(days+1).fill(0);
+  metrics.spending.forEach(t=>{
+    const day=Number(dateKey(new Date(t.timestamp),regionById(t.region).tz).slice(-2));
+    if(day<=days)daily[day]-=t.amount;
+  });
+  let total=0;
+  const cumulative=daily.map(value=>(total+=value)),max=Math.max(...cumulative,1);
+  const points=cumulative.map((value,i)=>`${(i/days*150).toFixed(1)},${(48-value/max*41).toFixed(1)}`);
+  return `<svg class="widget-line" viewBox="0 0 150 54" preserveAspectRatio="none" role="img" aria-label="Dépenses cumulées du mois"><title>${esc(formatMoney(metrics.expense))} de dépenses ce mois-ci</title><defs><linearGradient id="widget-spend-fill" x1="0" y1="0" x2="0" y2="1"><stop stop-color="currentColor" stop-opacity=".25"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs><path d="M${points.join(' L')} L150,54 L0,54Z" fill="url(#widget-spend-fill)"/><polyline points="${points.join(' ')}" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
 function home() {
-  const c=CURRENCIES[state.currency],r=currentRegion(),metrics=monthMetrics(state,nowDay().slice(0,7));
-  return `${topbar()}<section class="hero"><button class="account-select" data-act="accounts"><span class="flag">${c.flag}</span><span>Compte principal · ${state.currency}</span>${icon('down')}</button><p class="balance-label">Solde <button class="balance-toggle" data-act="hide" aria-label="${state.hideBalance?'Afficher les montants':'Masquer les montants'}">${icon(state.hideBalance?'eyeOff':'eye')}</button></p><h1 class="balance" style="${state.wallets[state.currency]>10000000?'font-size:34px':''}">${balanceHTML()}</h1><button class="account-detail" data-act="account-details">${icon('info')}<span>Coordonnées</span>${icon('chevron')}</button></section>
-  <div class="quick-actions">${[['topup','plus','Ajouter'],['send','arrowUp','Envoyer'],['exchange','exchange','Échanger'],['more','more','Plus']].map(([act,i,t])=>`<button class="quick-action" data-act="${act}"><span class="quick-icon">${icon(i)}</span><span>${t}</span></button>`).join('')}</div>
-  <button class="mini-promo" data-act="tab" data-id="savings"><span class="promo-icon">${icon('plane')}</span><span><h3>Votre prochaine escale.</h3><p>Un voyage en tête ?<br>Votre épargne vous accompagne.</p></span>${icon('chevron')}</button>
-  <div class="section-title"><h2>Vos transactions</h2><button data-act="all-transactions">Tout voir ${icon('chevron')}</button></div>
-  ${txGroups(ordered().filter(t=>t.currency===state.currency),5)}
-  <div class="activity-foot">${icon('location')}<button data-act="location">${r.flag} ${esc(r.city)} · activité</button></div>
-  <button class="panel" style="width:100%;display:flex;align-items:center;justify-content:space-between;text-align:left;margin-top:23px" data-act="tab" data-id="analytics"><span><span style="font-size:11px;color:var(--sub);display:block;margin-bottom:7px">Dépenses du mois · EUR</span><span style="font-size:23px;letter-spacing:-.8px;font-weight:600">${esc(money(metrics.expense))}</span></span>${icon('chart')}</button>
-  `;
+  const r=currentRegion(),metrics=monthMetrics(state,nowDay().slice(0,7));
+  const recent=ordered().filter(t=>t.currency===state.currency).slice(0,3),pockets=state.pockets.reduce((n,p)=>n+p.balance,0);
+  const digits=String(Math.trunc(state.wallets[state.currency]/100)).length,balanceSize=digits>8?32:digits>6?40:54;
+  return `${topbar()}<section class="hero" aria-label="Solde du compte ${state.currency}"><button class="account-select" data-act="accounts">Personnel · ${state.currency}</button><div class="hero-balance"><h1 class="balance" style="--balance-size:${balanceSize}px">${balanceHTML()}</h1><button class="balance-toggle" data-act="hide" aria-label="${state.hideBalance?'Afficher les montants':'Masquer les montants'}">${icon(state.hideBalance?'eyeOff':'eye')}</button></div><button class="accounts-pill" data-act="accounts">Comptes ${icon('down')}</button><div class="account-pagination" role="group" aria-label="Choisir un compte">${Object.entries(CURRENCIES).map(([currency,meta])=>`<button data-act="select-account" data-id="${currency}" class="${currency===state.currency?'is-active':''}" aria-pressed="${currency===state.currency}" aria-label="Compte ${esc(meta.name)} · ${currency}"><span aria-hidden="true"></span></button>`).join('')}</div></section>
+  <div class="quick-actions">${[['topup','plus','Ajouter de l’argent'],['exchange','exchange','Échanger'],['account-details','info','Informations'],['more','more','Plus']].map(([act,i,label])=>`<button class="quick-action" data-act="${act}"><span class="quick-icon">${icon(i)}</span><span>${label}</span></button>`).join('')}</div>
+  <h2 class="sr-only">Vos transactions</h2><div class="transactions recent-transactions">${recent.length?recent.map(txRow).join(''):'<div class="empty">Aucune transaction pour ce compte.</div>'}<button class="recent-more" data-act="all-transactions">Tout afficher</button></div>
+  <div class="section-title"><h2>Widgets</h2><button data-act="notifications" aria-label="Afficher les notifications">${icon('bell')}</button></div><div class="home-widgets"><button class="home-widget" data-act="expenses" data-period="month"><p>Dépensé ce mois-ci</p><strong>${esc(money(metrics.expense))}</strong><small>Compte EUR</small>${widgetSpendingChart(metrics)}</button><button class="home-widget" data-act="tab" data-id="savings"><p>Épargne totale</p><strong>${esc(money(pockets))}</strong><small>${state.pockets.length} poche${state.pockets.length>1?'s':''}</small><span class="widget-icons" aria-hidden="true"><span>${icon('pocket')}</span><span>${icon('plane')}</span><span>${icon('shield')}</span></span></button></div>
+  <button class="mini-promo" data-act="send"><span class="promo-icon">${icon('arrowUp')}</span><span><h3>Envoyer de l’argent</h3><p>À un contact ou à un bénéficiaire</p></span>${icon('chevron')}</button>
+  <div class="activity-foot">${icon('location')}<button data-act="location">${r.flag} ${esc(r.city)}</button></div>`;
 }
 function cardVisual(extra=null) {
   const frozen=extra?extra.frozen:state.cards.frozen,last4=extra?extra.last4:state.cards.last4;
@@ -194,7 +208,7 @@ function render() {
   if(!unlocked){root.innerHTML=lockHTML()+(state.scenario?'<p class="scenario-disclosure scenario-locked-disclosure">Scénario de démonstration · aucun compte réel</p>':'');return;}
   const content=view==='expenses'?expenses():view==='transactions'?allTransactions():({home,cards,payments,savings,analytics}[tab]||home)();
   const editorBanner=editMode?'<div class="editor-banner"><span>Mode édition · Démonstration</span><div class="editor-banner-actions"><button data-act="editor">Régler le scénario</button><button class="editor-exit-button" data-act="editor-exit" aria-label="Quitter le mode édition">×</button></div></div>':disclosure;
-  root.innerHTML=`<section class="screen${view==='expenses'?' expenses-screen':''}">${editorBanner}${content}${!storageAvailable?'<div class="info-box neutral">Les données ne peuvent pas être sauvegardées dans ce navigateur.</div>':''}</section>${nav()}`;
+  root.innerHTML=`<section class="screen ${view==='main'?tab:view}-screen">${editorBanner}${content}${!storageAvailable?'<div class="info-box neutral">Les données ne peuvent pas être sauvegardées dans ce navigateur.</div>':''}</section>${nav()}`;
 }
 function openSheet(title,content) {
   previousFocus=document.activeElement;
@@ -379,7 +393,7 @@ document.addEventListener('click',async event=>{
   try{
     switch(act){
       case'tab':tab=id;view='main';closeSheet();render();window.scrollTo({top:0});break;
-      case'expenses':view='expenses';expensesPeriod='year';expensesAnchor=activeMonth.slice(0,4);expensesMode='donut';expensesCategory='';expensesLimit=20;closeSheet();render();window.scrollTo({top:0});break;
+      case'expenses':view='expenses';expensesPeriod=b.dataset.period==='month'?'month':'year';expensesAnchor=expensesPeriod==='month'?nowDay().slice(0,7):activeMonth.slice(0,4);expensesMode='donut';expensesCategory='';expensesLimit=20;closeSheet();render();window.scrollTo({top:0});break;
       case'expenses-back':view='main';tab='analytics';render();window.scrollTo({top:0});break;
       case'expenses-mode':if(['line','bars','donut'].includes(id)){expensesMode=id;render();}break;
       case'expenses-period':{
@@ -569,7 +583,7 @@ setInterval(()=>{
 },60000);
 window.addEventListener('offline',()=>toast('Mode hors ligne · votre espace reste disponible.'));
 window.addEventListener('online',()=>toast('Connexion rétablie.'));
-if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js?v=7').catch(()=>{});}
+if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js?v=8').catch(()=>{});}
 theme();persist();render();
 window.__lumaReady=true;
 if(window.visualViewport){

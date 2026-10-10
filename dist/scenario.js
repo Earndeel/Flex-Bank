@@ -1,4 +1,4 @@
-import {FLOOR,RATES,CURRENCIES,REGIONS,HISTORY_REVISION,dateKey,shiftDay,threeMonthsAgo,historyRegion,regionById,dailyCandidates,validScenario,scenarioRegion,formatMoney} from './core.js?v=7';
+import {FLOOR,RATES,CURRENCIES,REGIONS,HISTORY_REVISION,dateKey,shiftDay,threeMonthsAgo,historyRegion,regionById,dailyCandidates,validScenario,scenarioRegion,formatMoney} from './core.js?v=8';
 
 const clone=value=>JSON.parse(JSON.stringify(value));
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

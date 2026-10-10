@@ -50,3 +50,15 @@ Ouvrir le profil de Lucas, puis « Mode édition ». Choisir les soldes des cinq
 « Enregistrer les soldes uniquement » conserve les opérations et recalcule leurs soldes intermédiaires. Le solde initial est déduit du solde final choisi et du registre. Les réglages incompatibles avec le minimum de 23 000,01 € ou un solde négatif dans une autre devise sont refusés, sans ajouter de crédit de compensation.
 
 « Annuler le dernier changement » est disponible dans la session déverrouillée tant qu’aucune nouvelle opération n’a modifié le registre ou ses soldes. Quitter l’éditeur conserve le scénario et son indication de démonstration ; verrouiller l’app ferme le mode édition.
+
+## Interface mobile
+
+Refonte visuelle d’octobre 2026, fondée sur les [captures iPhone publiées par Revolut](https://apps.apple.com/fr/app/revolut-plus-quune-banque/id932493382) et les [visuels officiels de comptes](https://www.revolut.com/revolut-sziget-cash-reward/). Luma conserve son nom, ses parcours et son identification comme démonstration. La navigation présente les fonctionnalités effectivement disponibles dans Luma.
+
+- Accueil : recherche en capsule, raccourcis Analyse/Cartes, solde central, sélecteur de comptes, actions circulaires et opérations récentes regroupées.
+- Widgets des dépenses et de l’épargne calculés à partir de l’historique ; aucune courbe n’est affichée lorsque les montants sont masqués.
+- Fond graphite, surfaces translucides, avatars ronds, typographie système iOS et barre de navigation pleine largeur.
+- Style commun aux cartes, paiements, poches, analyses, réglages et mode édition.
+- Chargement animé et cache hors ligne mis à jour. Les données locales et les règles du générateur restent inchangées.
+
+Les références publiques varient selon le thème et le pays ; il ne s’agit pas d’une version officielle de Revolut. Les tests de parcours s’exécutent avec `npm test` ; le rendu Safari n’a pas été vérifié dans un navigateur.
