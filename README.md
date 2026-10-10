@@ -61,4 +61,8 @@ Cartes, paiements, poches, localisation et mode édition restent accessibles. In
 
 Les tests valident les calculs, les invariants du registre et les parcours via un adaptateur DOM en mémoire. Ils ne vérifient pas le rendu de Safari. Le déploiement reste privé et le pied de page identifie l’application comme démonstration sans compte réel.
 
-La vue Analytics s’ouvre directement sur l’anneau des dépenses avec les catégories et périodes 1W / 1M / 6M / 1Y. La vue d’ensemble reste accessible dans le menu de période. Les boutons d’en-tête utilisent des fonds opaques et des contours nets, sans flou ni ombres diffuses. L’IBAN fourni pour le compte EUR est une donnée d’interface marquée « IBAN fictif — non utilisable » ; les coordonnées copiées conservent cette mention de démonstration.
+Analytics présente les cartes Dépenses, Revenus, Flux net et Actifs. Chaque carte ouvre son anneau détaillé. Les opérations disposent des périodes 1W / 1M / 6M / 1Y ; les actifs affichent les soldes actuels. Les boutons d’en-tête utilisent des fonds opaques et des contours nets, sans flou ni ombres diffuses. L’IBAN fourni pour le compte EUR est une donnée d’interface marquée « IBAN fictif — non utilisable » ; les coordonnées copiées conservent cette mention de démonstration.
+
+Accueil, Analytics et dépenses reprennent les mesures des trois captures fournies. Les icônes, le R de navigation et l’avatar sont des tracés SVG isolés ; aucun historique, montant ou IBAN des captures n’est intégré. Le drapeau EUR est un SVG à douze étoiles.
+
+Le profil contient un choix Français / English, mémorisé avec `flex-language-v1`, séparément du registre bancaire fictif. Le choix actualise les libellés, les dates et les montants ; les cartes Analytics et leurs graphiques lisent le même registre sans modifier les opérations. Les actifs montrent les soldes actuels, sans historique d’actifs inventé. Le rendu Safari sur appareil n’a pas été vérifié.

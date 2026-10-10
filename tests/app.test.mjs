@@ -15,14 +15,14 @@ class Element {
   append(){}
 }
 const elements=new Map(['app','sheet-root','toast','form-error','pin-error'].map(id=>[id,new Element(id)]));
-const meta=new Element(),body=new Element(),events=new Map(),values=new Map(),download=[];
+const meta=new Element(),body=new Element(),disclosure=new Element(),events=new Map(),values=new Map([['flex-language-v1','fr']]),download=[];
 Object.defineProperty(globalThis,'crypto',{value:webcrypto,configurable:true});
 Object.defineProperty(globalThis,'navigator',{value:{onLine:true,clipboard:{async writeText(text){values.set('clipboard',text);}}},configurable:true});
 globalThis.localStorage={getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v)};
 globalThis.document={
-  body,hidden:false,activeElement:null,
+  body,documentElement:{lang:'fr'},hidden:false,activeElement:null,
   getElementById:id=>elements.get(id)||null,
-  querySelector:selector=>selector.startsWith('meta')?meta:null,
+  querySelector:selector=>selector.startsWith('meta')?meta:selector==='.global-disclosure'?disclosure:null,
   addEventListener:(name,callback)=>events.set(name,callback),
   createElement:()=>{const el=new Element();el.click=()=>download.push(el.download);return el;},
   execCommand:()=>true
@@ -67,7 +67,7 @@ test('les raccourcis de l’accueil et les comptes restent accessibles sans chan
   assert.match(app(),/class="transactions recent-transactions"/);assert.match(app(),/class="home-widgets"/);
   await click('accounts');assert.match(sheet(),/Vos comptes/);await click('close-sheet');
   for(const currency of ['USD','GBP','EGP','THB','EUR']){
-    await click('select-account',currency);assert.match(app(),new RegExp('Personal · '+currency));
+    await click('select-account',currency);assert.match(app(),new RegExp('Personnel · '+currency));
   }
   assert.deepEqual(saved(),before);
   await click('expenses',undefined,{period:'month'});assert.match(app(),/expenses-screen/);
@@ -85,7 +85,7 @@ test('le masquage retire les chiffres et la courbe du nouvel accueil',async()=>{
   await click('hide');assert.deepEqual(saved(),before);assert.match(app(),/class="widget-line"/);
 });
 test('les six onglets et les parcours existants restent accessibles',async()=>{
-  for(const [id,expected] of [['home','Vos transactions'],['cards','Vos cartes'],['payments','Paiements'],['savings','Vos poches'],['analytics','Spent · Personal'],['credit','A plan that fits'],['invest','Brokerage account'],['crypto','No holdings'],['points','FlexPoints']]){
+  for(const [id,expected] of [['home','Vos transactions'],['cards','Vos cartes'],['payments','Paiements'],['savings','Vos poches'],['analytics','Votre argent'],['credit','Un plan adapté'],['invest','Compte d’investissement'],['crypto','Aucun actif'],['points','FlexPoints']]){
     await click('tab',id);assert.match(app(),new RegExp(expected));
   }
   for(const act of ['accounts','topup','send','exchange','request','more','account-details','profile','location','card-details','card-limit','new-card','new-pocket','new-contact','budget','notifications','install']){
@@ -94,7 +94,7 @@ test('les six onglets et les parcours existants restent accessibles',async()=>{
 });
 test('la page dépenses filtre les opérations, change de vue et revient à l’analyse sans modifier les données',async()=>{
   await click('tab','analytics');
-  assert.match(app(),/expenses-donut/);
+  assert.match(app(),/spent-card/);
   const before=saved();
   await click('expenses');
   assert.match(app(),/expenses-screen/);
@@ -108,33 +108,62 @@ test('la page dépenses filtre les opérations, change de vue et revient à l’
   await click('expenses-category','restaurant');assert.match(app(),/<h2>Restaurants<\/h2>/);
   await click('expenses-more');
   await click('expenses-category','');assert.match(app(),/Toutes les dépenses/);
-  await click('expenses-back');assert.match(app(),/Spent · Personal/);assert.match(app(),/Dépenses cumulées/);
+  await click('expenses-back');assert.match(app(),/Votre argent/);assert.match(app(),/spent-card/);
   assert.deepEqual(saved(),before);
 });
 test('les analyses et dépenses sont des pages complètes, leurs périodes et devise restent cohérentes',async()=>{
  const before=saved();await click('tab','analytics');assert.doesNotMatch(app(),/<nav class="nav"/);
- await click('expenses-period-menu');assert.match(sheet(),/Vue d’ensemble/);await click('analytics-overview');assert.match(app(),/Votre argent/);assert.doesNotMatch(app(),/<nav class="nav"/);
- await click('analytics-period');assert.match(sheet(),/This week/);await click('analytics-select-period','month');assert.match(app(),/This month/);
+ assert.match(app(),/spent-card/);assert.match(app(),/income-card/);assert.match(app(),/cashflow-card/);
+ await click('analytics-period');assert.match(sheet(),/Cette semaine/);await click('analytics-select-period','month');assert.match(app(),/Ce mois-ci/);
  await click('expenses',undefined,{period:'month'});assert.doesNotMatch(app(),/<nav class="nav"/);
  for(const period of ['week','halfyear','year']){await click('expenses-period',period);assert.match(app(),new RegExp('data-id="'+period+'" class="is-active"'));}
- await click('expenses-back');await click('expenses-back');assert.match(app(),/<nav class="nav"/);
+ await click('expenses-back');assert.match(app(),/spent-card/);await click('back-main');assert.match(app(),/<nav class="nav"/);
  for(const id of ['home','credit','invest','payments','crypto','points'])assert.match(app().slice(app().indexOf('<nav')),new RegExp('data-id="'+id+'"'));
  assert.deepEqual(saved(),before);
 });
-test('Analytics ouvre directement l’anneau annuel et retrouve ce choix à chaque accès',async()=>{
+test('Analytics ouvre les cartes, la carte dépenses ouvre l’anneau et Retour retrouve les cartes',async()=>{
  const before=saved();await click('tab','home');
  assert.match(app(),/data-act="tab" data-id="analytics" aria-label="Analyse des dépenses"/);
- await click('tab','analytics');
- assert.match(app(),/screen expenses-screen/);assert.match(app(),/expenses-donut/);
- assert.match(app(),/data-id="year" class="is-active"/);assert.match(app(),/By Category/);
- assert.match(app(),/aria-label="Retour à l’accueil"/);assert.doesNotMatch(app(),/spent-card/);
+ assert.match(app(),/class="euro-flag"/);assert.doesNotMatch(app(),/🇪🇺<\/span>Personnel/);
+ await click('tab','analytics');assert.match(app(),/screen analytics-screen/);
+ assert.match(app(),/spent-card/);assert.match(app(),/income-card/);assert.doesNotMatch(app(),/expenses-donut/);
+ await click('analytics-select-period','year');assert.match(app(),/Cette année/);
+ await click('expenses',undefined,{period:'year'});assert.match(app(),/expenses-donut/);
+ assert.match(app(),/data-id="year" class="is-active"/);assert.match(app(),/Par catégorie/);
+ assert.match(app(),/aria-label="Retour à l’analyse"/);assert.doesNotMatch(app(),/spent-card/);
  await click('expenses-mode','line');assert.match(app(),/Dépenses cumulées/);
  await click('expenses-period','month');assert.match(app(),/data-id="month" class="is-active"/);
- await click('expenses-back');assert.match(app(),/Vos transactions/);assert.match(app(),/<nav class="nav"/);
- await click('tab','analytics');assert.match(app(),/expenses-donut/);assert.match(app(),/data-id="year" class="is-active"/);
- await click('expenses-period-menu');await click('analytics-overview');assert.match(app(),/spent-card/);
- await click('analytics-main');assert.match(app(),/expenses-donut/);assert.doesNotMatch(app(),/spent-card/);
- await click('expenses-back');assert.match(app(),/Vos transactions/);assert.deepEqual(saved(),before);
+ await click('expenses-back');assert.match(app(),/spent-card/);assert.match(app(),/Cette année/);
+ await click('expenses',undefined,{period:'year'});assert.match(app(),/expenses-donut/);
+ await click('expenses-back');await click('back-main');assert.match(app(),/Vos transactions/);
+ assert.deepEqual(saved(),before);
+});
+test('chaque carte Analytics ouvre son anneau, avec des montants issus du même registre',async()=>{
+ const before=saved();await click('tab','analytics');await click('analytics-select-period','year');
+ for(const [action,title] of [['income-history','Revenus · Personnel'],['cashflow-history','Flux net · Personnel'],['assets','Actifs totaux · Personnel']]){
+  await click(action);assert.match(app(),/expenses-donut/);assert.ok(app().includes(title));
+  if(action==='assets'){assert.match(app(),/Soldes actuels/);assert.doesNotMatch(app(),/class="expenses-period-row"/);assert.match(app(),/Par compte/);}
+  await click('expenses-back');assert.match(app(),/spent-card/);
+ }
+ await click('back-main');assert.deepEqual(saved(),before);
+});
+test('français et anglais se choisissent dans le profil, persistent et préservent les données',async()=>{
+ const before=saved();await click('tab','home');await click('profile');assert.match(sheet(),/Langue/);
+ await click('language');assert.match(sheet(),/English/);assert.match(sheet(),/Français/);
+ await click('select-language','en');assert.equal(values.get('flex-language-v1'),'en');
+ assert.equal(document.documentElement.lang,'en');assert.match(app(),/>Search<\/span>/);
+ assert.match(app(),/>Accounts<\/button>/);assert.match(app(),/Mock IBAN — not usable/);
+ assert.match(disclosure.textContent,/Demonstration — no real bank account/);
+ assert.match(sheet(),/App language/);await click('close-sheet');await click('profile');assert.match(sheet(),/Dark mode/);
+ await click('tab','analytics');assert.match(app(),/>Analytics<\/h1>/);assert.match(app(),/>Spent<\/span>/);
+ await click('expenses',undefined,{period:'year'});assert.match(app(),/Spent · Personal/);assert.match(app(),/This year/);assert.match(app(),/By Category/);
+ assert.match(app(),/Demonstration data/);await click('expenses-back');await click('back-main');await click('account-details');
+ assert.match(sheet(),/Mock IBAN/);await click('copy-account');assert.match(values.get('clipboard'),/DEMONSTRATION.*Mock IBAN, not usable for a transfer/);
+ await click('send');submit('send-form',{recipient:'Paul',amount:'0',currency:'EUR',date:new Date().toLocaleDateString('en-CA',{timeZone:'Africa/Cairo'}),note:''});assert.match(elements.get('form-error').textContent,/Enter a valid recipient and amount/);assert.deepEqual(saved(),before);
+ await click('select-language','invalid');assert.equal(values.get('flex-language-v1'),'en');
+ await click('profile');await click('language');await click('select-language','fr');
+ assert.equal(document.documentElement.lang,'fr');assert.match(app(),/>Rechercher<\/span>/);
+ assert.match(disclosure.textContent,/Démonstration — aucun compte réel/);assert.deepEqual(saved(),before);await click('close-sheet');
 });
 test('l’IBAN EUR fourni reste identifié comme fictif à l’affichage et lors de la copie',async()=>{
  const iban='FR76 3000 4028 3798 7654 3210 943';
@@ -150,19 +179,19 @@ test('l’IBAN EUR fourni reste identifié comme fictif à l’affichage et lors
  await click('close-sheet');await click('select-account','EUR');assert.deepEqual(saved(),before);
 });
 test('cartes promotionnelles et menus ne modifient pas le registre',async()=>{
- const before=saved();await click('tab','home');await click('promo-slide','1');assert.match(app(),/Make it yours/);
- await click('promo-slide','2');assert.match(app(),/Room for your plans/);await click('promo-slide','0');
+ const before=saved();await click('tab','home');await click('promo-slide','1');assert.match(app(),/À votre image/);
+ await click('promo-slide','2');assert.match(app(),/Place à vos projets/);await click('promo-slide','0');
  await click('move');assert.match(sheet(),/Changer de devise/);await click('close-sheet');
  await click('more');assert.match(sheet(),/Vos cartes/);assert.match(sheet(),/Vos poches/);await click('close-sheet');
  await click('promo-dismiss');assert.doesNotMatch(app(),/promo-carousel/);assert.deepEqual(saved(),before);
 });
 test('portefeuille et liste de suivi sont fictifs et indépendants des soldes bancaires',async()=>{
- const before=saved();await click('tab','invest');assert.match(app(),/Cash balance/);
+ const before=saved();await click('tab','invest');assert.match(app(),/Solde disponible/);
  await click('invest-deposit');assert.match(sheet(),/Le solde des comptes et le registre bancaire ne sont pas modifiés/);
  submit('invest-cash-form',{amount:'100'},{withdraw:'false'});assert.equal(JSON.parse(values.get('flex-preview-v1')).cash,10000);
  await click('invest-withdraw');submit('invest-cash-form',{amount:'101'},{withdraw:'true'});assert.equal(JSON.parse(values.get('flex-preview-v1')).cash,10000);assert.match(elements.get('form-error').textContent,/dépasse/);
  submit('invest-cash-form',{amount:'25'},{withdraw:'true'});assert.equal(JSON.parse(values.get('flex-preview-v1')).cash,7500);
- await click('brokerage-toggle');assert.doesNotMatch(app(),/Cash balance/);await click('brokerage-toggle');
+ await click('brokerage-toggle');assert.doesNotMatch(app(),/Solde disponible/);await click('brokerage-toggle');
  await click('invest-market');assert.match(sheet(),/sans cotations/);await click('instrument','global');await click('watchlist-toggle','global');assert.deepEqual(JSON.parse(values.get('flex-preview-v1')).watchlist,['global']);
  await click('watchlist-toggle','global');assert.deepEqual(JSON.parse(values.get('flex-preview-v1')).watchlist,[]);await click('close-sheet');
  await click('crypto-market');assert.match(sheet(),/Bitcoin/);assert.doesNotMatch(sheet(),/Global Equity/);await click('close-sheet');

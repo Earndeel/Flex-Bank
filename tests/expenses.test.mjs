@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {expenseMetrics,shiftExpensePeriod,renderExpenseSummary} from '../dist/expenses.js';
+import {expenseMetrics,analyticsBreakdownMetrics,shiftExpensePeriod,renderExpenseSummary} from '../dist/expenses.js';
 
 const tx=(id,amount,category='restaurant',extra={})=>({id,amount,category,currency:'EUR',status:'completed',timestamp:'2026-10-12T12:00:00Z',...extra});
 const options={period:'month',anchor:'2026-10',timeZone:'UTC',now:new Date('2026-10-31T23:59:59Z')};
@@ -32,7 +32,7 @@ test('une période vide et une catégorie unique rendent un anneau valide',()=>{
   assert.match(html,/Aucune dépense/);
   assert.doesNotMatch(html,/NaN|Infinity/);
   const one=renderExpenseSummary(expenseMetrics([tx('meal',-432123)],options),settings);
-  assert.match(one,/<circle[^>]+stroke="#ff7635"/);
+  assert.match(one,/<circle[^>]+stroke="#ff7a40"/);
 });
 test('masquer les montants protège le total, les catégories et les graphiques accessibles',()=>{
   const metrics=expenseMetrics([tx('meal',-432123)],options);
@@ -42,4 +42,27 @@ test('masquer les montants protège le total, les catégories et les graphiques 
     assert.doesNotMatch(html,/432123|4[\s\u202f\u00a0]?321/);
     if(mode!=='donut')assert.match(html,/Montants masqués/);
   }
+});
+
+test('revenus, flux et actifs forment des anneaux cohérents sans inverser les opérations affichées',()=>{
+ const state={transactions:[tx('meal',-3200),tx('income',250000,'income'),tx('change',-4000,'exchange')],wallets:{EUR:123456,USD:112000},pockets:[{balance:30000}]};
+ const original=structuredClone(state),settings={...options,rates:{EUR:1,USD:1.12}};
+ const income=analyticsBreakdownMetrics(state,{...settings,scope:'income'});
+ assert.equal(income.total,250000);assert.equal(income.transactions[0].amount,250000);
+ const flow=analyticsBreakdownMetrics(state,{...settings,scope:'cashflow'});
+ assert.equal(flow.total,253200);assert.equal(flow.displayTotal,246800);
+ assert.equal(flow.categories.reduce((sum,c)=>sum+c.value,0),flow.total);
+ assert.equal(flow.series.reduce((sum,c)=>sum+c.value,0),flow.total);
+ for(const currency of ['EUR','USD']){
+  const assets=analyticsBreakdownMetrics(state,{...settings,scope:'assets',currency});
+  assert.equal(assets.categories.reduce((sum,c)=>sum+c.value,0),assets.total);
+  assert.equal(assets.series.reduce((sum,c)=>sum+c.value,0),assets.total);assert.equal(assets.hidePeriods,true);
+ }
+ assert.deepEqual(state,original);
+});
+test('le flux réunit les mois des revenus et dépenses même si leurs premières dates diffèrent',()=>{
+ const state={transactions:[tx('old',10000,'income',{timestamp:'2026-08-01T12:00:00Z'}),tx('meal',-3200,'restaurant',{timestamp:'2026-10-01T12:00:00Z'})],wallets:{EUR:0},pockets:[]};
+ const flow=analyticsBreakdownMetrics(state,{...options,period:'all',scope:'cashflow'});
+ assert.equal(flow.series.find(s=>s.key==='2026-08').value,10000);assert.equal(flow.series.find(s=>s.key==='2026-10').value,3200);
+ assert.equal(flow.series.reduce((sum,c)=>sum+c.value,0),flow.total);
 });

@@ -1,8 +1,8 @@
 // Read-only presentation helpers. Amounts stay in integer minor units.
 const symbols={EUR:'€',USD:'$',GBP:'£',EGP:'E£',THB:'฿'};
-export const EXPENSE_COLORS={transfer:'#6498ff',restaurant:'#ff7635',shopping:'#ff41a3',groceries:'#4fd014',transport:'#8654ff',coffee:'#c39062',subscription:'#787878'};
-export function displayMoney(cents,currency='EUR',{digits=2}={}) {
-  const number=new Intl.NumberFormat('fr-FR',{minimumFractionDigits:digits,maximumFractionDigits:digits}).format(Math.abs(cents)/100);
+export const EXPENSE_COLORS={transfer:'#6fa0ff',restaurant:'#ff7a40',shopping:'#ff50a4',groceries:'#5ad024',transport:'#8654ff',coffee:'#c39062',subscription:'#787878'};
+export function displayMoney(cents,currency='EUR',{digits=2,locale='fr-FR'}={}) {
+  const number=new Intl.NumberFormat(locale,{minimumFractionDigits:digits,maximumFractionDigits:digits}).format(Math.abs(cents)/100);
   return (cents<0?'-':'')+(symbols[currency]||currency+' ')+number;
 }
 export const localDay=(date,timeZone='UTC')=>new Intl.DateTimeFormat('en-CA',{timeZone,year:'numeric',month:'2-digit',day:'2-digit'}).format(date);
@@ -12,7 +12,7 @@ const addMonths=(key,n)=>{const d=new Date(key.slice(0,7)+'-01T12:00:00Z');d.set
 const validDay=key=>/^\d{4}-\d{2}-\d{2}$/.test(key||'')&&Number.isFinite(utcDay(key).getTime())&&utcDay(key).toISOString().startsWith(key);
 const validMonth=key=>/^\d{4}-(0[1-9]|1[0-2])$/.test(key||'');
 const monday=key=>addDays(key,-((utcDay(key).getUTCDay()+6)%7));
-export function periodRange({period='year',anchor,timeZone='UTC',now=new Date()}={}) {
+export function periodRange({period='year',anchor,timeZone='UTC',now=new Date(),locale='en-GB'}={}) {
   if(!['week','month','halfyear','year','all'].includes(period))period='year';
   const today=localDay(now,timeZone);
   const current=period==='week'?monday(today):period==='year'?today.slice(0,4):today.slice(0,7);
@@ -30,10 +30,11 @@ export function periodRange({period='year',anchor,timeZone='UTC',now=new Date()}
     anchor=/^\d{4}$/.test(anchor||'')?anchor:current;start=anchor+'-01-01';end=anchor+'-12-31';
     keys=Array.from({length:12},(_,i)=>anchor+'-'+String(i+1).padStart(2,'0'));
   }else {anchor='';start='0000-01-01';end=today;}
-  const dateLabel=key=>new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short',timeZone:'UTC'}).format(utcDay(key));
-  const monthLabel=key=>new Intl.DateTimeFormat('en-GB',{month:'long',year:'numeric',timeZone:'UTC'}).format(utcDay(key+'-15'));
-  const rangeLabel=period==='week'?dateLabel(start)+' – '+dateLabel(end):period==='month'?monthLabel(anchor):period==='halfyear'?dateLabel(start)+' – '+monthLabel(anchor):period==='year'?anchor:'All history';
-  const caption=period==='all'?'Since the start':anchor===current?{week:'This week',month:'This month',halfyear:'Last 6 months',year:'This year'}[period]:rangeLabel;
+  const dateLabel=key=>new Intl.DateTimeFormat(locale,{day:'numeric',month:'short',timeZone:'UTC'}).format(utcDay(key));
+  const monthLabel=key=>new Intl.DateTimeFormat(locale,{month:'long',year:'numeric',timeZone:'UTC'}).format(utcDay(key+'-15'));
+  const rangeLabel=period==='week'?dateLabel(start)+' – '+dateLabel(end):period==='month'?monthLabel(anchor):period==='halfyear'?dateLabel(start)+' – '+monthLabel(anchor):period==='year'?anchor:locale.startsWith('fr')?'Tout l’historique':'All history';
+  const fr=locale.startsWith('fr');
+  const caption=period==='all'?(fr?'Depuis le début':'Since the start'):anchor===current?(fr?{week:'Cette semaine',month:'Ce mois-ci',halfyear:'6 derniers mois',year:'Cette année'}:{week:'This week',month:'This month',halfyear:'Last 6 months',year:'This year'})[period]:rangeLabel;
   return {period,anchor,start,end,keys,today,current,rangeLabel,caption,canNext:period!=='all'&&anchor<current};
 }
 export function shiftPeriod(anchor,period,delta) {
@@ -43,9 +44,9 @@ export function shiftPeriod(anchor,period,delta) {
   if(period==='year'&&/^\d{4}$/.test(anchor||''))return String(Number(anchor)+delta);
   return anchor;
 }
-export function dashboardMetrics(state,{period='week',anchor,currency='EUR',timeZone='UTC',now=new Date(),rates={EUR:1}}={}) {
-  const range=periodRange({period,anchor,timeZone,now}),previousAnchor=shiftPeriod(range.anchor,range.period,-1);
-  const previous=periodRange({period:range.period,anchor:previousAnchor,timeZone,now});
+export function dashboardMetrics(state,{period='week',anchor,currency='EUR',timeZone='UTC',now=new Date(),rates={EUR:1},locale='en-GB'}={}) {
+  const range=periodRange({period,anchor,timeZone,now,locale}),previousAnchor=shiftPeriod(range.anchor,range.period,-1);
+  const previous=periodRange({period:range.period,anchor:previousAnchor,timeZone,now,locale});
   const daily=range.keys.map(key=>({key,income:0,expense:0})),categories=new Map();
   let income=0,spent=0,previousIncome=0;
   for(const t of state.transactions){
