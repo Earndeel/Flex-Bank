@@ -3,7 +3,7 @@ import {
   initialState,migrateState,assertState,rollForward,dateKey,shiftDay,regionById,regionFromCoordinates,
   sendMoney,topUp,exchange,pocketMove,monthMetrics,formatMoney,parseMoney,applyTransaction
 } from './core.js?v=9';
-import {expenseMetrics,renderExpenseSummary,shiftExpensePeriod} from './expenses.js?v=2';
+import {expenseMetrics,renderExpenseSummary,shiftExpensePeriod} from './expenses.js?v=3';
 import {SCENARIO_FIELDS,scenarioDefaults,scenarioFingerprint,regenerateScenario,changeScenarioBalances,renderScenarioEditor} from './scenario.js?v=3';
 
 import {displayMoney,dashboardMetrics,periodRange,creditProjection,EXPENSE_COLORS} from './ui-metrics.js?v=1';
@@ -77,6 +77,8 @@ let analyticsPeriod='week',promoIndex=0,promoDismissed=false,brokerageExpanded=t
 let preview={cash:0,watchlist:[]};
 try{const savedPreview=JSON.parse(localStorage.getItem('flex-preview-v1')||'null');if(savedPreview&&Number.isSafeInteger(savedPreview.cash)&&savedPreview.cash>=0&&Array.isArray(savedPreview.watchlist))preview={cash:savedPreview.cash,watchlist:savedPreview.watchlist.filter(x=>typeof x==='string')};}catch{}
 const savePreview=()=>{try{localStorage.setItem('flex-preview-v1',JSON.stringify(preview));}catch{toast('Les réglages du portefeuille restent disponibles pendant cette session.');}};
+const DEMO_IBAN='FR76 3000 4028 3798 7654 3210 943';
+const accountReference=()=>state.currency==='EUR'?DEMO_IBAN:'TEST-FLEX-'+state.currency+'-0428';
 const currentRegion=()=>regionById(state.location.regionId);
 const nowDay=()=>dateKey(new Date(),currentRegion().tz);
 const ordered=()=>[...state.transactions].sort((a,b)=>b.timestamp.localeCompare(a.timestamp));
@@ -158,7 +160,7 @@ function home() {
   const r=currentRegion(),metrics=monthMetrics(state,nowDay().slice(0,7));
   const recent=ordered().filter(t=>t.currency===state.currency).slice(0,4),pockets=state.pockets.reduce((n,p)=>n+p.balance,0);
   const digits=String(Math.trunc(state.wallets[state.currency]/100)).length,balanceSize=digits>8?32:digits>6?38:44;
-  return `${topbar()}<section class="hero" aria-label="Solde du compte ${state.currency}"><button class="account-select" data-act="accounts"><span class="account-flag" aria-hidden="true">${CURRENCIES[state.currency].flag}</span>Personal · ${state.currency}</button><div class="hero-balance"><h1 class="balance" style="--balance-size:${balanceSize}px"><button data-act="hide" aria-label="${state.hideBalance?'Afficher les montants':'Masquer les montants'}">${balanceHTML()}</button></h1></div><button class="account-reference" data-act="account-details">${icon('building')}<span>TEST-FLEX-${state.currency}-0428</span></button><button class="accounts-pill" data-act="accounts">Accounts</button></section>
+  return `${topbar()}<section class="hero" aria-label="Solde du compte ${state.currency}"><button class="account-select" data-act="accounts"><span class="account-flag" aria-hidden="true">${CURRENCIES[state.currency].flag}</span>Personal · ${state.currency}</button><div class="hero-balance"><h1 class="balance" style="--balance-size:${balanceSize}px"><button data-act="hide" aria-label="${state.hideBalance?'Afficher les montants':'Masquer les montants'}">${balanceHTML()}</button></h1></div><div class="account-reference-group"><button class="account-reference" data-act="account-details" aria-describedby="account-reference-note">${icon('building')}<span>${esc(accountReference())}</span></button>${state.currency==='EUR'?'<p id="account-reference-note" class="account-reference-note">IBAN fictif — non utilisable</p>':'<span id="account-reference-note" class="sr-only">Référence de démonstration</span>'}</div><button class="accounts-pill" data-act="accounts">Accounts</button></section>
   <div class="quick-actions">${[['topup','plus','Add money'],['move','move','Move'],['account-details','building','Details'],['more','more','More']].map(([act,i,label])=>`<button class="quick-action" data-act="${act}"><span class="quick-icon">${icon(i)}</span><span>${label}</span></button>`).join('')}</div>
   ${promo()}<h2 class="sr-only">Vos transactions</h2><div class="transactions recent-transactions">${recent.length?recent.map(txRow).join(''):'<div class="empty">Aucune transaction pour ce compte.</div>'}<button class="recent-more" data-act="all-transactions">See all</button></div>
   <div class="section-title"><h2>Widgets</h2><button data-act="notifications" aria-label="Afficher les notifications">${icon('bell')}</button></div><div class="home-widgets"><button class="home-widget" data-act="expenses" data-period="month"><p>Spent this month</p><strong>${esc(money(metrics.expense))}</strong><small>Personal · EUR</small>${widgetSpendingChart(metrics)}</button><button class="home-widget" data-act="tab" data-id="savings"><p>Savings</p><strong>${esc(money(pockets))}</strong><small>${state.pockets.length} pockets</small><span class="widget-icons" aria-hidden="true"><span>${icon('pocket')}</span><span>${icon('plane')}</span><span>${icon('shield')}</span></span></button></div>
@@ -208,13 +210,13 @@ function distribution(items,otherLabel='Others') {
   const label={transfer:'Transfers',restaurant:'Restaurants',shopping:'Shopping',groceries:'Groceries',transport:'Transport',coffee:'Coffee',subscription:'Subscriptions',cash:'Cash',pockets:'Savings'};
   return `<div class="distribution"><div class="distribution-track" aria-hidden="true"><span style="flex:${leading.value};background:${leading.color}"></span>${other?`<span style="flex:${other};background:#bcbcbc"></span>`:''}</div><div class="distribution-legend"><span><i style="background:${leading.color}"></i>${label[leading.id]||'Other'}</span>${other?`<span><i style="background:#bcbcbc"></i>${otherLabel}</span>`:''}</div></div>`;
 }
-function analytics() {
+function analyticsOverview() {
   const currency=state.currency,stats=dashboardMetrics(state,{period:analyticsPeriod,currency,timeZone:currentRegion().tz,rates:RATES});
   const monthly=monthMetrics(state,nowDay().slice(0,7)),pct=Math.min(100,monthly.expense/state.budget*100);
   let daily=stats.daily.length?stats.daily:Array.from({length:7},(_,i)=>({key:String(i),income:0,expense:0}));
   if(daily.length>7){const groups=Array.from({length:7},()=>({key:'',income:0,expense:0}));daily.forEach((day,i)=>{const group=groups[Math.floor(i*7/daily.length)];group.key=group.key?group.key.split(' – ')[0]+' – '+day.key:day.key;group.income+=day.income;group.expense+=day.expense;});daily=groups;}
   const maxIncome=Math.max(...daily.map(d=>d.income),1),maxFlow=Math.max(stats.income,stats.spent,1);
-  return `<header class="detail-toolbar"><button class="icon-button" data-act="back-main" aria-label="Fermer les analyses">${icon('close')}</button></header><h1 class="analytics-title">Analytics</h1><span class="sr-only">Votre argent</span>
+  return `<header class="detail-toolbar"><button class="icon-button" data-act="analytics-main" aria-label="Retour aux dépenses">${icon('close')}</button></header><h1 class="analytics-title">Analytics</h1><span class="sr-only">Votre argent</span>
   <div class="analytics-scope"><button data-act="accounts">Personal ${icon('down')}</button><button data-act="analytics-period">${stats.range.caption}</button></div>
   <button class="insight-card spent-card" data-act="expenses" data-period="${analyticsPeriod}" aria-label="Explorer les dépenses"><span class="insight-label">Spent</span><strong>${esc(roundedMoney(stats.spent,currency))}</strong>${state.hideBalance?'<span class="insight-hidden">Montants masqués</span>':distribution(stats.categories)}<span class="sr-only">Explorer les dépenses</span></button>
   <div class="insight-grid"><button class="insight-card income-card" data-act="income-history"><span class="insight-label">Income</span><strong>${esc(roundedMoney(stats.income,currency))}</strong><span class="insight-change ${stats.incomeChange<0?'negative':'positive'}">${stats.incomeChange<0?'▾':'▴'} ${esc(roundedMoney(Math.abs(stats.incomeChange),currency))}</span>${state.hideBalance?'':`<div class="income-bars" aria-label="Entrées par période">${daily.map(d=>`<span class="${d.income?'has-income':''}" style="--bar-height:${Math.max(6,Math.round(d.income/maxIncome*100))}%" title="${esc(d.key)} : ${esc(money(d.income,currency))}"></span>`).join('')}</div>`}</button>
@@ -246,11 +248,12 @@ function points() {
   return `${topbar()}<section class="points-hero"><span class="points-symbol">${icon('rewards')}</span><p>FlexPoints</p><h1>${state.hideBalance?'••••':new Intl.NumberFormat('fr-FR').format(points)}</h1><span>Illustrative points</span></section><div class="panel"><h2>Your everyday activity</h2><p class="sheet-sub" style="margin-top:12px">Un point fictif par euro de dépenses de l’historique EUR. Ces points n’ont aucune valeur et ne peuvent pas être échangés.</p><button class="primary-button" data-act="expenses" data-period="all">Voir les dépenses</button></div><button class="outline-button" data-act="savings-open">${icon('pocket')}Vos projets d’épargne</button>`;
 }
 
+function analytics() {return expenses();}
 function expenses() {
   const metrics=expenseMetrics(state.transactions,{period:expensesPeriod,anchor:expensesAnchor,currency:state.currency,timeZone:currentRegion().tz});
   const transactions=expensesCategory?metrics.transactions.filter(t=>t.category===expensesCategory):metrics.transactions;
   const label=expensesCategory?(CATEGORY_META[expensesCategory]?.label||'Autres'):'Toutes les dépenses';
-  return `${renderExpenseSummary(metrics,{mode:expensesMode,category:expensesCategory,hidden:state.hideBalance,money,icon,metadata:CATEGORY_META})}
+  return `${renderExpenseSummary(metrics,{mode:expensesMode,category:expensesCategory,hidden:state.hideBalance,money,icon,metadata:CATEGORY_META,backLabel:view==='main'&&tab==='analytics'?'Retour à l’accueil':'Retour à l’analyse'})}
     <div class="expenses-section-heading" id="expenses-transactions"><h2>${esc(label)}</h2>${expensesCategory?'<button class="expenses-clear" data-act="expenses-category" data-id="">Tout voir</button>':`<span>${transactions.length} opération${transactions.length>1?'s':''}</span>`}</div>
     ${transactions.length?txGroups(transactions.slice(0,expensesLimit)):'<div class="expenses-empty">Aucune opération à afficher.</div>'}
     ${transactions.length>expensesLimit?'<button class="expenses-more" data-act="expenses-more">Afficher plus d’opérations</button>':''}
@@ -272,9 +275,10 @@ function render() {
   theme();
   const disclosure=state.scenario?'<p class="scenario-disclosure">Scénario de démonstration · montants et opérations fictifs</p>':'';
   if(!unlocked){root.innerHTML=lockHTML()+(state.scenario?'<p class="scenario-disclosure scenario-locked-disclosure">Scénario de démonstration · aucun compte réel</p>':'');return;}
-  const content=view==='expenses'?expenses():view==='transactions'?allTransactions():({home,cards,payments,savings,analytics,invest,credit,crypto:cryptoView,points}[tab]||home)();
+  const content=view==='expenses'?expenses():view==='analytics-overview'?analyticsOverview():view==='transactions'?allTransactions():({home,cards,payments,savings,analytics,invest,credit,crypto:cryptoView,points}[tab]||home)();
   const editorBanner=editMode?'<div class="editor-banner"><span>Mode édition · Démonstration</span><div class="editor-banner-actions"><button data-act="editor">Régler le scénario</button><button class="editor-exit-button" data-act="editor-exit" aria-label="Quitter le mode édition">×</button></div></div>':disclosure;
-  root.innerHTML=`<section class="screen ${view==='main'?tab:view}-screen">${editMode?editorBanner:''}${content}${editMode?'':disclosure}${!storageAvailable?'<div class="info-box neutral">Les données ne peuvent pas être sauvegardées dans ce navigateur.</div>':''}</section>${view==='main'&&tab!=='analytics'?nav():''}`;
+  const screenName=view==='main'&&tab==='analytics'?'expenses':view==='analytics-overview'?'analytics':view==='main'?tab:view;
+  root.innerHTML=`<section class="screen ${screenName}-screen">${editMode?editorBanner:''}${content}${editMode?'':disclosure}${!storageAvailable?'<div class="info-box neutral">Les données ne peuvent pas être sauvegardées dans ce navigateur.</div>':''}</section>${view==='main'&&tab!=='analytics'?nav():''}`;
 }
 function openSheet(title,content) {
   previousFocus=document.activeElement;
@@ -318,7 +322,8 @@ function transactionSheet(id) {
   openSheet('Détails de la transaction',`<div class="detail-hero"><div class="tx-icon" style="background:${c.color}17;color:${c.color}">${icon(c.icon)}</div><p>${esc(t.name)}</p><h3 class="${amount>0?'positive':''}">${amount>0?'+':''}${esc(money(amount,t.currency))}</h3><p>${t.status==='declined'?'Paiement refusé':'Transaction · Terminée'}</p></div>${t.demo?'<p class="editor-demo-transaction">Opération générée · Démonstration</p>':''}<div class="details-list">${detailsRow('Date',stamp)}${detailsRow('Lieu',t.city||'En ligne')}${detailsRow('Catégorie',c.label)}${detailsRow('Méthode',t.method||'—')}${t.originalAmount&&t.originalCurrency!==t.currency?detailsRow('Montant local',state.hideBalance?'••••':formatMoney(t.originalAmount,t.originalCurrency)):''}${detailsRow('Solde après opération',money(t.balanceAfter,t.currency))}${t.note?detailsRow('Message',t.note):''}${detailsRow('Référence','FLEX-'+t.id.slice(-12).toUpperCase())}</div><button class="primary-button" data-act="close-sheet">Fermer</button>`);
 }
 function accountDetailsSheet() {
-  openSheet('Coordonnées',`<p class="sheet-sub">Références de test non utilisables pour un virement.</p><div class="details-list">${detailsRow('Titulaire','Lucas Jouvençon')}${detailsRow('Compte',state.currency+' · Flex démo')}${detailsRow('Référence','TEST-FLEX-'+state.currency+'-0428')}${detailsRow('Établissement','Flex')}</div><div class="info-box neutral">Aucun IBAN ni compte bancaire réel. Ces informations ne permettent pas de recevoir un virement.</div><button class="primary-button" data-act="copy-account">${icon('copy')}Copier la référence</button>`);
+  const isEUR=state.currency==='EUR';
+  openSheet('Coordonnées de démonstration',`<p class="sheet-sub">Coordonnées fictives, non utilisables pour un virement.</p><div class="details-list">${detailsRow('Titulaire','Lucas Jouvençon')}${detailsRow('Compte',state.currency+' · Flex démo')}${detailsRow(isEUR?'IBAN fictif':'Référence de test',accountReference())}${detailsRow('Établissement','Flex — Démonstration')}</div><div class="info-box neutral">Aucun compte bancaire réel. Ces coordonnées ne permettent pas de recevoir un virement.</div><button class="primary-button" data-act="copy-account">${icon('copy')}Copier ${isEUR?'l’IBAN fictif':'la référence'}</button>`);
 }
 
 function profileSheet() {
@@ -465,7 +470,7 @@ function analyticsPeriodSheet() {
 }
 function expensePeriodSheet() {
   const metrics=expenseMetrics(state.transactions,{period:expensesPeriod,anchor:expensesAnchor,currency:state.currency,timeZone:currentRegion().tz});
-  openSheet('Période des dépenses',`<div class="expenses-period-nav"><button data-act="expenses-shift" data-id="-1" aria-label="Période précédente" ${expensesPeriod==='all'?'disabled':''}>${icon('back')}</button><span>${esc(metrics.rangeLabel)}</span><button data-act="expenses-shift" data-id="1" aria-label="Période suivante" ${metrics.canNext?'':'disabled'}>${icon('chevron')}</button></div><button class="primary-button" data-act="expenses-period" data-id="all">Tout l’historique</button>`);
+  openSheet('Période des dépenses',`<div class="expenses-period-nav"><button data-act="expenses-shift" data-id="-1" aria-label="Période précédente" ${expensesPeriod==='all'?'disabled':''}>${icon('back')}</button><span>${esc(metrics.rangeLabel)}</span><button data-act="expenses-shift" data-id="1" aria-label="Période suivante" ${metrics.canNext?'':'disabled'}>${icon('chevron')}</button></div><button class="primary-button" data-act="expenses-period" data-id="all">Tout l’historique</button><button class="secondary-button" data-act="analytics-overview">Vue d’ensemble</button>`);
 }
 document.addEventListener('click',async event=>{
   lastActive=Date.now();
@@ -481,9 +486,9 @@ document.addEventListener('click',async event=>{
   }
   try{
     switch(act){
-      case'tab':tab=id;view='main';closeSheet();render();window.scrollTo({top:0});break;
+      case'tab':tab=id;view='main';if(id==='analytics'){expensesPeriod='year';expensesAnchor=periodRange({period:'year',timeZone:currentRegion().tz}).anchor;expensesMode='donut';expensesCategory='';expensesLimit=20;}closeSheet();render();window.scrollTo({top:0});break;
       case'expenses':view='expenses';expensesPeriod=['week','month','halfyear','year','all'].includes(b.dataset.period)?b.dataset.period:'year';expensesAnchor=periodRange({period:expensesPeriod,timeZone:currentRegion().tz}).anchor;expensesMode='donut';expensesCategory='';expensesLimit=20;closeSheet();render();window.scrollTo({top:0});break;
-      case'expenses-back':closeSheet();view='main';tab='analytics';render();window.scrollTo({top:0});break;
+      case'expenses-back':closeSheet();tab=view==='main'&&tab==='analytics'?'home':'analytics';view='main';render();window.scrollTo({top:0});break;
       case'expenses-mode':if(['line','bars','donut'].includes(id)){expensesMode=id;render();}break;
       case'expenses-period':{
         if(!['week','month','halfyear','year','all'].includes(id))break;
@@ -499,6 +504,8 @@ document.addEventListener('click',async event=>{
       case'promo-dismiss':promoDismissed=true;render();break;
       case'move':menuSheet('Move',[['send','arrowUp','Envoyer'],['exchange','exchange','Changer de devise'],['tab','pocket','Vers une poche','savings']]);break;
       case'savings-open':tab='savings';view='main';closeSheet();render();window.scrollTo({top:0});break;
+      case'analytics-overview':view='analytics-overview';tab='analytics';closeSheet();render();window.scrollTo({top:0});break;
+      case'analytics-main':view='main';tab='analytics';closeSheet();render();window.scrollTo({top:0});break;
       case'analytics-period':analyticsPeriodSheet();break;
       case'analytics-select-period':if(['week','month','halfyear','year'].includes(id)){analyticsPeriod=id;closeSheet();render();}break;
       case'income-history':view='transactions';filter='in';search='';render();window.scrollTo({top:0});break;
@@ -543,7 +550,7 @@ document.addEventListener('click',async event=>{
       case'request':requestSheet();break;
       case'more':moreSheet();break;
       case'account-details':accountDetailsSheet();break;
-      case'copy-account':await copy('DEMO — Lucas Jouvençon — TEST-FLEX-'+state.currency+'-0428 — Identifiant fictif, aucun IBAN.','Référence copiée.');break;
+      case'copy-account':await copy('DÉMONSTRATION — Lucas Jouvençon — '+accountReference()+' — '+(state.currency==='EUR'?'IBAN fictif':'Référence de test')+', non utilisable pour un virement.','Coordonnées de démonstration copiées.');break;
       case'all-transactions':case'search':view='transactions';search='';filter='all';closeSheet();render();window.scrollTo({top:0});if(act==='search')document.getElementById('tx-search')?.focus();break;
       case'back-main':view='main';tab='home';closeSheet();render();window.scrollTo({top:0});break;
       case'filter':filter=id;render();break;
@@ -704,7 +711,7 @@ setInterval(()=>{
 },60000);
 window.addEventListener('offline',()=>toast('Mode hors ligne · votre espace reste disponible.'));
 window.addEventListener('online',()=>toast('Connexion rétablie.'));
-if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js?v=9').catch(()=>{});}
+if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js?v=10').catch(()=>{});}
 theme();persist();render();
 window.__flexReady=true;
 if(window.visualViewport){

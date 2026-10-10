@@ -85,7 +85,7 @@ test('le masquage retire les chiffres et la courbe du nouvel accueil',async()=>{
   await click('hide');assert.deepEqual(saved(),before);assert.match(app(),/class="widget-line"/);
 });
 test('les six onglets et les parcours existants restent accessibles',async()=>{
-  for(const [id,expected] of [['home','Vos transactions'],['cards','Vos cartes'],['payments','Paiements'],['savings','Vos poches'],['analytics','Votre argent'],['credit','A plan that fits'],['invest','Brokerage account'],['crypto','No holdings'],['points','FlexPoints']]){
+  for(const [id,expected] of [['home','Vos transactions'],['cards','Vos cartes'],['payments','Paiements'],['savings','Vos poches'],['analytics','Spent · Personal'],['credit','A plan that fits'],['invest','Brokerage account'],['crypto','No holdings'],['points','FlexPoints']]){
     await click('tab',id);assert.match(app(),new RegExp(expected));
   }
   for(const act of ['accounts','topup','send','exchange','request','more','account-details','profile','location','card-details','card-limit','new-card','new-pocket','new-contact','budget','notifications','install']){
@@ -94,7 +94,7 @@ test('les six onglets et les parcours existants restent accessibles',async()=>{
 });
 test('la page dépenses filtre les opérations, change de vue et revient à l’analyse sans modifier les données',async()=>{
   await click('tab','analytics');
-  assert.match(app(),/Explorer les dépenses/);
+  assert.match(app(),/expenses-donut/);
   const before=saved();
   await click('expenses');
   assert.match(app(),/expenses-screen/);
@@ -108,17 +108,46 @@ test('la page dépenses filtre les opérations, change de vue et revient à l’
   await click('expenses-category','restaurant');assert.match(app(),/<h2>Restaurants<\/h2>/);
   await click('expenses-more');
   await click('expenses-category','');assert.match(app(),/Toutes les dépenses/);
-  await click('expenses-back');assert.match(app(),/Votre argent/);
+  await click('expenses-back');assert.match(app(),/Spent · Personal/);assert.match(app(),/Dépenses cumulées/);
   assert.deepEqual(saved(),before);
 });
 test('les analyses et dépenses sont des pages complètes, leurs périodes et devise restent cohérentes',async()=>{
  const before=saved();await click('tab','analytics');assert.doesNotMatch(app(),/<nav class="nav"/);
+ await click('expenses-period-menu');assert.match(sheet(),/Vue d’ensemble/);await click('analytics-overview');assert.match(app(),/Votre argent/);assert.doesNotMatch(app(),/<nav class="nav"/);
  await click('analytics-period');assert.match(sheet(),/This week/);await click('analytics-select-period','month');assert.match(app(),/This month/);
  await click('expenses',undefined,{period:'month'});assert.doesNotMatch(app(),/<nav class="nav"/);
  for(const period of ['week','halfyear','year']){await click('expenses-period',period);assert.match(app(),new RegExp('data-id="'+period+'" class="is-active"'));}
- await click('expenses-back');await click('back-main');assert.match(app(),/<nav class="nav"/);
+ await click('expenses-back');await click('expenses-back');assert.match(app(),/<nav class="nav"/);
  for(const id of ['home','credit','invest','payments','crypto','points'])assert.match(app().slice(app().indexOf('<nav')),new RegExp('data-id="'+id+'"'));
  assert.deepEqual(saved(),before);
+});
+test('Analytics ouvre directement l’anneau annuel et retrouve ce choix à chaque accès',async()=>{
+ const before=saved();await click('tab','home');
+ assert.match(app(),/data-act="tab" data-id="analytics" aria-label="Analyse des dépenses"/);
+ await click('tab','analytics');
+ assert.match(app(),/screen expenses-screen/);assert.match(app(),/expenses-donut/);
+ assert.match(app(),/data-id="year" class="is-active"/);assert.match(app(),/By Category/);
+ assert.match(app(),/aria-label="Retour à l’accueil"/);assert.doesNotMatch(app(),/spent-card/);
+ await click('expenses-mode','line');assert.match(app(),/Dépenses cumulées/);
+ await click('expenses-period','month');assert.match(app(),/data-id="month" class="is-active"/);
+ await click('expenses-back');assert.match(app(),/Vos transactions/);assert.match(app(),/<nav class="nav"/);
+ await click('tab','analytics');assert.match(app(),/expenses-donut/);assert.match(app(),/data-id="year" class="is-active"/);
+ await click('expenses-period-menu');await click('analytics-overview');assert.match(app(),/spent-card/);
+ await click('analytics-main');assert.match(app(),/expenses-donut/);assert.doesNotMatch(app(),/spent-card/);
+ await click('expenses-back');assert.match(app(),/Vos transactions/);assert.deepEqual(saved(),before);
+});
+test('l’IBAN EUR fourni reste identifié comme fictif à l’affichage et lors de la copie',async()=>{
+ const iban='FR76 3000 4028 3798 7654 3210 943';
+ await click('tab','home');await click('select-account','EUR');const before=saved();
+ assert.ok(app().includes(iban));assert.match(app(),/IBAN fictif — non utilisable/);
+ await click('account-details');assert.ok(sheet().includes(iban));assert.match(sheet(),/IBAN fictif/);
+ assert.match(sheet(),/Aucun compte bancaire réel/);await click('copy-account');
+ assert.ok(values.get('clipboard').includes(iban));assert.match(values.get('clipboard'),/DÉMONSTRATION.*IBAN fictif, non utilisable pour un virement/);
+ await click('close-sheet');await click('select-account','USD');
+ assert.doesNotMatch(app(),/FR76/);assert.match(app(),/TEST-FLEX-USD-0428/);
+ await click('account-details');assert.doesNotMatch(sheet(),/FR76/);await click('copy-account');
+ assert.match(values.get('clipboard'),/DÉMONSTRATION.*TEST-FLEX-USD-0428.*Référence de test, non utilisable/);
+ await click('close-sheet');await click('select-account','EUR');assert.deepEqual(saved(),before);
 });
 test('cartes promotionnelles et menus ne modifient pas le registre',async()=>{
  const before=saved();await click('tab','home');await click('promo-slide','1');assert.match(app(),/Make it yours/);
