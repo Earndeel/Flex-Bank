@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
 import {STORAGE_KEY,FLOOR,assertState} from '../dist/core.js';
+import {scenarioDefaults} from '../dist/scenario.js';
 
 class Element {
   constructor(id=''){this.id=id;this.innerHTML='';this.textContent='';this.style={};this.dataset={};this.disabled=false;this.isConnected=true;this.content='';}
@@ -43,6 +44,13 @@ async function click(act,id,extra={}){
 function submit(id,fields,dataset={}){
   events.get('submit')({target:{id,fields,dataset},preventDefault(){}});
 }
+function editorFields(state=saved()) {
+  const {config,balances}=scenarioDefaults(state);
+  const fields=Object.fromEntries(Object.entries(balances).map(([currency,cents])=>['wallet-'+currency,String(cents/100)]));
+  Object.assign(fields,{'wallet-EUR':'65000',income:'2500',spending:'900','income-kind':'freelance','income-day':'25'});
+  config.stops.forEach((stop,i)=>{fields['stop-date-'+i]=stop.date;fields['stop-region-'+i]=stop.regionId;});
+  return {fields,config};
+}
 test('écran verrouillé, code incorrect puis accès par 2589',async()=>{
   assert.match(app(),/Bonjour, Lucas/);
   assert.doesNotMatch(app(),/Vos transactions/);
@@ -79,6 +87,21 @@ test('la page dépenses filtre les opérations, change de vue et revient à l’
   await click('expenses-category','');assert.match(app(),/Toutes les dépenses/);
   await click('expenses-back');assert.match(app(),/Votre argent/);
   assert.deepEqual(saved(),before);
+});
+test('mode édition : étapes, validation, régénération, sortie et annulation complète',async()=>{
+  const before=saved();await click('profile');assert.match(sheet(),/Mode édition/);await click('editor');
+  assert.match(app(),/Mode édition · Démonstration/);assert.match(sheet(),/Pays et déplacements/);
+  const {fields,config}=editorFields();const form=new Element('scenario-form');form.fields=fields;elements.set('scenario-form',form);
+  await click('editor-add-stop');assert.match(sheet(),new RegExp('editor-stop-date-'+config.stops.length));
+  await click('editor-remove-stop',String(config.stops.length));assert.doesNotMatch(sheet(),new RegExp('editor-stop-date-'+config.stops.length));
+  submit('scenario-form',{...fields,'wallet-EUR':'1000'},{operation:'balances'});
+  assert.match(elements.get('form-error').textContent,/23 000/);assert.deepEqual(saved(),before);
+  submit('scenario-form',{...fields,'stop-region-0':'paris'});
+  assert.equal(saved().wallets.EUR,6500000);assert.equal(saved().scenario.stops[0].regionId,'paris');assert.ok(saved().transactions.filter(t=>t.automatic).every(t=>t.demo));
+  assert.match(sheet(),/Historique de démonstration régénéré/);assert.ok(assertState(saved()));
+  await click('editor-exit');assert.match(app(),/Scénario de démonstration/);assert.doesNotMatch(app(),/Mode édition · Démonstration/);
+  await click('editor');await click('editor-undo');assert.deepEqual(saved(),before);assert.match(sheet(),/dernier changement a été annulé/);
+  await click('editor-exit');
 });
 test('ajout, virement et change enregistrés depuis leurs formulaires',async()=>{
   await click('tab','home');
@@ -132,6 +155,15 @@ test('demande de paiement, réception idempotente et copie',async()=>{
   await click('share-request',r.id);
   assert.match(values.get('clipboard'),/LUMA — Demande de paiement/);
   
+});
+test('l’annulation d’une édition préserve les opérations personnelles ajoutées ensuite',async()=>{
+  await click('editor');const {fields}=editorFields();submit('scenario-form',fields,{operation:'balances'});
+  const count=saved().transactions.length;assert.equal(saved().wallets.EUR,6500000);
+  await click('close-sheet');submit('topup-form',{amount:'10',method:'Carte'});
+  assert.equal(saved().transactions.length,count+1);assert.equal(saved().wallets.EUR,6501000);
+  await click('editor');await click('editor-undo');
+  assert.match(elements.get('form-error').textContent,/activité a changé/);assert.equal(saved().wallets.EUR,6501000);assert.equal(saved().transactions.length,count+1);
+  await click('editor-exit');
 });
 test('export CSV, données valides et verrouillage final',async()=>{
   await click('export');

@@ -154,7 +154,8 @@ function zonedStamp(key, hour, minute, timeZone) {
   const asUtc = Date.UTC(+p.year,+p.month-1,+p.day,+p.hour,+p.minute,+p.second);
   return new Date(target.getTime() - (asUtc-target.getTime())).toISOString();
 }
-export function dailyCandidates(key, regionId) {
+export function dailyCandidates(key, regionId, scenario=null) {
+  if(scenario)return scenarioCandidates(key,regionId,scenario);
   const r = regionById(regionId), rng = random('luma-lucas-' + key + '-' + r.id);
   const items = [];
   const templates = [
@@ -186,6 +187,52 @@ export function dailyCandidates(key, regionId) {
     name:sub[0],category:'subscription',currency:'EUR',amount:-sub[1],originalCurrency:'EUR',
     region:r.id,city:r.city,method:'Carte virtuelle • 0428',automatic:true,status:'completed'
   });
+  return items.sort((a,b)=>a.timestamp.localeCompare(b.timestamp));
+}
+export function validScenario(config) {
+  if(config?.version!==1||typeof config.seed!=='string'||!config.seed.length||config.seed.length>80)return false;
+  if(!['salary','freelance'].includes(config.incomeKind)||!Number.isInteger(config.incomeDay)||config.incomeDay<1||config.incomeDay>28)return false;
+  if(['monthlyIncome','monthlyExpenses'].some(k=>!Number.isSafeInteger(config[k])||config[k]<0||config[k]>100000000))return false;
+  if(!Array.isArray(config.stops)||!config.stops.length||config.stops.length>12)return false;
+  return config.stops.every((s,i)=>{
+    if(typeof s.date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(s.date)||!REGIONS.some(r=>r.id===s.regionId))return false;
+    const date=new Date(s.date+'T12:00:00Z');
+    return Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===s.date&&(!i||config.stops[i-1].date<s.date);
+  });
+}
+export function scenarioRegion(config,key) {
+  let region=config.stops[0].regionId;
+  for(const stop of config.stops){if(stop.date>key)break;region=stop.regionId;}
+  return region;
+}
+function scenarioIncomeDay(key,requested) {
+  const original=new Date(key.slice(0,7)+'-'+String(requested).padStart(2,'0')+'T12:00:00Z'),date=new Date(original);
+  while([0,6].includes(date.getUTCDay()))date.setUTCDate(date.getUTCDate()-1);
+  if(date.getUTCMonth()!==original.getUTCMonth()){
+    date.setTime(original.getTime());while([0,6].includes(date.getUTCDay()))date.setUTCDate(date.getUTCDate()+1);
+  }
+  return date.getUTCDate();
+}
+function scenarioCandidates(key,regionId,config) {
+  const r=regionById(regionId),rng=random(config.seed+'-'+key+'-'+r.id),items=[],scale=config.monthlyExpenses/120000;
+  const common={currency:'EUR',region:r.id,city:r.city,automatic:true,demo:true,status:'completed',scenarioSeed:config.seed};
+  const templates=[['coffee',2.1,5.8,8,.83],['restaurant',8.2,22.6,12,.91],['transport',3.8,15.4,16,.51],['groceries',8.5,44.4,19,.41],['shopping',15.2,65.8,18,.11]];
+  for(let i=0;i<templates.length;i++){
+    const [category,min,max,hour,chance]=templates[i],chosen=rng()<chance,value=Math.round((min+rng()*(max-min))*r.cost*100*scale),minute=Math.floor(rng()*59);
+    if(chosen&&value>0)items.push({...common,id:'scenario-'+config.seed+'-'+key+'-'+i,timestamp:zonedStamp(key,hour,minute,r.tz),name:merchantLabel(config.seed+'-'+key,r.id,category),category,amount:-value,originalAmount:Math.round(value*RATES[r.currency]),originalCurrency:r.currency,method:'Carte de démonstration',note:'Démonstration — dépense générée pour le scénario'});
+  }
+  const day=Number(key.slice(-2));
+  const posts=config.incomeKind==='freelance'?
+    [{day:Math.max(1,Math.floor(config.incomeDay/2)),amount:Math.round(config.monthlyIncome*.4),name:'Mission A · Démonstration'},{day:config.incomeDay,amount:config.monthlyIncome-Math.round(config.monthlyIncome*.4),name:'Mission B · Démonstration'}]:
+    [{day:config.incomeDay,amount:config.monthlyIncome,name:config.incomeKind==='salary'?'Salaire · Démonstration':'Mission · Démonstration'}];
+  posts.forEach((post,i)=>{
+    if(post.amount>0&&day===scenarioIncomeDay(key,post.day))items.push({...common,id:'scenario-'+config.seed+'-'+key+'-income-'+i,timestamp:zonedStamp(key,9,17+i*13,r.tz),name:post.name,category:'income',amount:post.amount,originalCurrency:'EUR',method:'Virement de démonstration',note:'Démonstration — revenu mensuel généré'});
+  });
+  const sub={3:['Spotify Premium',1099],10:['Apple · iCloud+',299],18:['Adobe · Creative Cloud',1299]}[day];
+  if(sub&&scale>0){
+    const value=Math.round(sub[1]*scale);
+    if(value>0)items.push({...common,id:'scenario-'+config.seed+'-'+key+'-sub',timestamp:zonedStamp(key,10,4,r.tz),name:sub[0],category:'subscription',amount:-value,originalCurrency:'EUR',method:'Carte de démonstration',note:'Démonstration — abonnement généré'});
+  }
   return items.sort((a,b)=>a.timestamp.localeCompare(b.timestamp));
 }
 export function threeMonthsAgo(key) {
@@ -289,10 +336,12 @@ export function rollForward(state, now = new Date()) {
   });
   const activeSince = Math.max(Date.parse(state.location.updatedAt)||0, Date.parse(state.simulationResumedAt)||0);
   for (let key = start; key <= today; key = shiftDay(key,1)) {
-    for (const tx of dailyCandidates(key,r.id)) {
+    const regionId=state.scenario&&state.location.source==='scenario'?scenarioRegion(state.scenario,key):r.id;
+    const region=regionById(regionId);
+    for (const tx of dailyCandidates(key,regionId,state.scenario||null)) {
       if (existing.has(tx.id) || new Date(tx.timestamp)>now || Date.parse(tx.timestamp)<activeSince) continue;
       existing.add(tx.id);
-      const declined = tx.amount<0 && (state.cards.frozen || (tx.category==='subscription' && !state.cards.online) || (!state.cards.international && r.currency!=='EUR') || (spent.get(key)||0)-tx.amount > state.cards.dailyLimit);
+      const declined = tx.amount<0 && (state.cards.frozen || (tx.category==='subscription' && !state.cards.online) || (!state.cards.international && region.currency!=='EUR') || (spent.get(key)||0)-tx.amount > state.cards.dailyLimit);
       if (declined) {
         state.transactions.push({...tx,status:'declined',attemptedAmount:tx.amount,amount:0,balanceAfter:state.wallets.EUR});
       } else if (applyTransaction(state,tx)) { count++; if(tx.amount<0) spent.set(key,(spent.get(key)||0)-tx.amount); }
@@ -372,6 +421,7 @@ export function parseMoney(value) {
   return Math.round(Number(normalized)*100);
 }
 export function assertState(state) {
+  if(state?.scenario&&!validScenario(state.scenario))return false;
   if (state?.version!==VERSION || !state.wallets || state.wallets.EUR<FLOOR || !Array.isArray(state.transactions)) return false;
   if (Object.keys(RATES).some(c=>!Number.isSafeInteger(state.wallets[c]) || state.wallets[c]<0)) return false;
   if (!state.cards || !Number.isSafeInteger(state.cards.dailyLimit) || state.cards.dailyLimit<0) return false;

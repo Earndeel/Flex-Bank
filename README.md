@@ -40,3 +40,13 @@ Quelques sources consultées pour les noms locaux :
 ## Vérification
 
 Lancer `npm test`. Aucun paquet tiers n’est nécessaire pour servir l’app.
+
+## Mode édition
+
+Ouvrir le profil de Lucas, puis « Mode édition ». Choisir les soldes des cinq comptes, le revenu mensuel, la référence de dépenses et les étapes datées du voyage. Les réglages et les opérations produites sont des données de démonstration stockées dans le navigateur.
+
+« Régénérer dépenses et revenus » remplace l’historique automatique par trois mois calendaires de nouvelles opérations, sans supprimer les opérations manuelles, contacts, cartes, demandes, virements programmés ou poches. Les dépenses utilisent les commerces, coûts et devises de chaque région. Les revenus mensuels sont versés un jour ouvré ; le profil indépendant les répartit en deux missions. Chaque régénération choisit une nouvelle graine, conservée pour reprendre l’activité quotidienne sans doublons.
+
+« Enregistrer les soldes uniquement » conserve les opérations et recalcule leurs soldes intermédiaires. Le solde initial est déduit du solde final choisi et du registre. Les réglages incompatibles avec le minimum de 23 000,01 € ou un solde négatif dans une autre devise sont refusés, sans ajouter de crédit de compensation.
+
+« Annuler le dernier changement » est disponible dans la session déverrouillée tant qu’aucune nouvelle opération n’a modifié le registre ou ses soldes. Quitter l’éditeur conserve le scénario et son indication de démonstration ; verrouiller l’app ferme le mode édition.

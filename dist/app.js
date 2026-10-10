@@ -2,8 +2,9 @@ import {
   FLOOR,STORAGE_KEY,PIN_HASH,RATES,CURRENCIES,REGIONS,CATEGORY_META,
   initialState,migrateState,assertState,rollForward,dateKey,shiftDay,regionById,regionFromCoordinates,
   sendMoney,topUp,exchange,pocketMove,monthMetrics,formatMoney,parseMoney,applyTransaction
-} from './core.js?v=4';
+} from './core.js?v=7';
 import {expenseMetrics,renderExpenseSummary,shiftExpensePeriod} from './expenses.js?v=1';
+import {SCENARIO_FIELDS,scenarioDefaults,scenarioFingerprint,regenerateScenario,changeScenarioBalances,renderScenarioEditor} from './scenario.js?v=1';
 
 const ICONS = {
   home:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',
@@ -57,6 +58,7 @@ catch { state=initialState(); storageAvailable=false; }
 let unlocked=false,tab='home',view='main',filter='all',search='',pin='',pinChecking=false,attempts=0,blockedUntil=0;
 let activeMonth=dateKey(new Date()).slice(0,7),showCard=false,hiddenAt=0,lastActive=Date.now(),toastTimer,previousFocus;
 let expensesPeriod='year',expensesAnchor='',expensesMode='donut',expensesCategory='',expensesLimit=20;
+let editMode=false,editorDraft=null,editorUndo=null,editorNotice='';
 const root=document.getElementById('app'),sheetRoot=document.getElementById('sheet-root');
 const money=(amount,currency='EUR')=>state.hideBalance?'••••':formatMoney(amount,currency);
 const currentRegion=()=>regionById(state.location.regionId);
@@ -188,9 +190,11 @@ function lockHTML() {
 }
 function render() {
   theme();
-  if(!unlocked){root.innerHTML=lockHTML();return;}
+  const disclosure=state.scenario?'<p class="scenario-disclosure">Scénario de démonstration · montants et opérations fictifs</p>':'';
+  if(!unlocked){root.innerHTML=lockHTML()+(state.scenario?'<p class="scenario-disclosure scenario-locked-disclosure">Scénario de démonstration · aucun compte réel</p>':'');return;}
   const content=view==='expenses'?expenses():view==='transactions'?allTransactions():({home,cards,payments,savings,analytics}[tab]||home)();
-  root.innerHTML=`<section class="screen${view==='expenses'?' expenses-screen':''}">${content}${!storageAvailable?'<div class="info-box neutral">Les données ne peuvent pas être sauvegardées dans ce navigateur.</div>':''}</section>${nav()}`;
+  const editorBanner=editMode?'<div class="editor-banner"><span>Mode édition · Démonstration</span><div class="editor-banner-actions"><button data-act="editor">Régler le scénario</button><button class="editor-exit-button" data-act="editor-exit" aria-label="Quitter le mode édition">×</button></div></div>':disclosure;
+  root.innerHTML=`<section class="screen${view==='expenses'?' expenses-screen':''}">${editorBanner}${content}${!storageAvailable?'<div class="info-box neutral">Les données ne peuvent pas être sauvegardées dans ce navigateur.</div>':''}</section>${nav()}`;
 }
 function openSheet(title,content) {
   previousFocus=document.activeElement;
@@ -231,7 +235,7 @@ function transactionSheet(id) {
   const t=state.transactions.find(t=>t.id===id);if(!t)return;
   const c=categoryMeta(t),amount=t.status==='declined'?t.attemptedAmount:t.amount;
   const stamp=new Intl.DateTimeFormat('fr-FR',{timeZone:regionById(t.region).tz,dateStyle:'long',timeStyle:'short'}).format(new Date(t.timestamp));
-  openSheet('Détails de la transaction',`<div class="detail-hero"><div class="tx-icon" style="background:${c.color}17;color:${c.color}">${icon(c.icon)}</div><p>${esc(t.name)}</p><h3 class="${amount>0?'positive':''}">${amount>0?'+':''}${esc(money(amount,t.currency))}</h3><p>${t.status==='declined'?'Paiement refusé':'Transaction · Terminée'}</p></div><div class="details-list">${detailsRow('Date',stamp)}${detailsRow('Lieu',t.city||'En ligne')}${detailsRow('Catégorie',c.label)}${detailsRow('Méthode',t.method||'—')}${t.originalAmount&&t.originalCurrency!==t.currency?detailsRow('Montant local',state.hideBalance?'••••':formatMoney(t.originalAmount,t.originalCurrency)):''}${detailsRow('Solde après opération',money(t.balanceAfter,t.currency))}${t.note?detailsRow('Message',t.note):''}${detailsRow('Référence','LUMA-'+t.id.slice(-12).toUpperCase())}</div><button class="primary-button" data-act="close-sheet">Fermer</button>`);
+  openSheet('Détails de la transaction',`<div class="detail-hero"><div class="tx-icon" style="background:${c.color}17;color:${c.color}">${icon(c.icon)}</div><p>${esc(t.name)}</p><h3 class="${amount>0?'positive':''}">${amount>0?'+':''}${esc(money(amount,t.currency))}</h3><p>${t.status==='declined'?'Paiement refusé':'Transaction · Terminée'}</p></div>${t.demo?'<p class="editor-demo-transaction">Opération générée · Démonstration</p>':''}<div class="details-list">${detailsRow('Date',stamp)}${detailsRow('Lieu',t.city||'En ligne')}${detailsRow('Catégorie',c.label)}${detailsRow('Méthode',t.method||'—')}${t.originalAmount&&t.originalCurrency!==t.currency?detailsRow('Montant local',state.hideBalance?'••••':formatMoney(t.originalAmount,t.originalCurrency)):''}${detailsRow('Solde après opération',money(t.balanceAfter,t.currency))}${t.note?detailsRow('Message',t.note):''}${detailsRow('Référence','LUMA-'+t.id.slice(-12).toUpperCase())}</div><button class="primary-button" data-act="close-sheet">Fermer</button>`);
 }
 function accountDetailsSheet() {
   openSheet('Coordonnées',`<p class="sheet-sub">Votre référence de compte.</p><div class="details-list">${detailsRow('Titulaire','Lucas Jouvençon')}${detailsRow('Compte',state.currency)}${detailsRow('Référence','LUMA-'+state.currency+'-0428')}${detailsRow('Établissement','Luma')}</div><button class="primary-button" data-act="copy-account">${icon('copy')}Copier la référence</button>`);
@@ -241,10 +245,24 @@ function profileSheet() {
   ${toggleRow('Mode sombre','Adaptez l’interface à votre préférence','theme',state.theme==='dark','moon')}
   ${toggleRow('Activité quotidienne','Ajouts automatiques à l’ouverture de l’app','autoSimulation',state.autoSimulation,'repeat')}
   ${toggleRow('Notifications dans l’app','Informer des nouvelles opérations','notify',state.notify,'bell')}
+  <button class="editor-launch" data-act="editor"><span class="setting-left">${icon('settings')}<span><span class="setting-name" style="display:block">Mode édition</span><span class="setting-description" style="display:block">Soldes, voyages et historique de démonstration</span></span></span>${icon('chevron')}</button>
   <button class="setting-row" style="width:100%;text-align:left" data-act="location"><span class="setting-left">${icon('location')}<span><span class="setting-name" style="display:block">Localisation</span><span class="setting-description" style="display:block">${esc(currentRegion().city)} · ${state.location.source==='gps'?'Position du navigateur':'Choix manuel'}</span></span></span>${icon('chevron')}</button>
   <button class="setting-row" style="width:100%;text-align:left" data-act="install"><span class="setting-left">${icon('plus')}<span class="setting-name">Installer sur l’iPhone</span></span>${icon('chevron')}</button></div>
   <div class="info-box neutral">Réserve du compte EUR : 23 000,01 € minimum.<br>Code local à 4 chiffres · Verrouillage après 5 minutes d’inactivité ou 1 minute en arrière-plan.<br>Les données restent dans ce navigateur.</div>
   <button class="primary-button" data-act="lock">${icon('lock')}Verrouiller l’app</button><button class="secondary-button" data-act="export">Exporter les données</button><button class="secondary-button danger-button" data-act="reset">Réinitialiser les données</button>`);
+}
+function editorSheet() {
+  if(!editorDraft)editorDraft=scenarioDefaults(state);
+  openSheet('Mode édition · Démonstration',`${editorNotice?`<div class="editor-result" role="status"><strong>${esc(editorNotice)}</strong>${state.scenarioSummary?`${state.scenarioSummary.count} opérations lors de la dernière régénération.<br>${esc(formatMoney(state.scenarioSummary.expenses))} de dépenses · ${esc(formatMoney(state.scenarioSummary.income))} de revenus.`:''}</div>`:''}${renderScenarioEditor(editorDraft,{canUndo:!!editorUndo,errorHTML:errorHTML()})}`);
+}
+function readEditorDraft(form=document.getElementById('scenario-form')) {
+  if(!form||!editorDraft)throw new Error('Ouvre le mode édition pour modifier le scénario.');
+  const f=new FormData(form),balances=Object.fromEntries(Object.keys(RATES).map(currency=>[currency,parseMoney(f.get('wallet-'+currency))]));
+  const config={...editorDraft.config,monthlyIncome:parseMoney(f.get('income')),monthlyExpenses:parseMoney(f.get('spending')),incomeKind:String(f.get('income-kind')),incomeDay:Number(f.get('income-day')),stops:editorDraft.config.stops.map((_,i)=>({date:String(f.get('stop-date-'+i)),regionId:String(f.get('stop-region-'+i))}))};
+  editorDraft={balances,config};return editorDraft;
+}
+function captureEditorUndo() {
+  return SCENARIO_FIELDS.map(key=>({key,present:Object.hasOwn(state,key),value:state[key]===undefined?undefined:JSON.parse(JSON.stringify(state[key]))}));
 }
 function locationSheet() {
   openSheet('Votre localisation',`<p class="sheet-sub">La région détermine les nouveaux libellés de commerces, la devise locale et les horaires. Les anciens paiements conservent leur lieu.</p><button class="primary-button" data-act="geolocate">${icon('location')}Utiliser ma position</button><p style="font-size:11px;color:var(--sub);margin:22px 0 12px">OU CHOISIR UNE VILLE</p><div class="transactions">${REGIONS.map(r=>`<button class="tx-row" data-act="select-location" data-id="${r.id}"><span style="font-size:24px;width:33px">${r.flag}</span><span class="tx-body"><span class="tx-name" style="display:block">${r.city}</span><span class="tx-sub" style="display:block">${r.country} · ${r.currency}</span></span>${currentRegion().id===r.id?icon('check'):icon('chevron')}</button>`).join('')}</div><p class="demo-footnote">La position sert uniquement à choisir une région.<br>Les coordonnées exactes ne sont ni stockées ni envoyées par Luma.</p>`);
@@ -298,13 +316,13 @@ async function copy(text,message='Copié') {
 }
 function exportCSV() {
   const cell=v=>'"'+String(v??'').replace(/^[=+@-]/,"'").replace(/"/g,'""')+'"';
-  const rows=[['TYPE','DATE','LIBELLE','MONTANT','DEVISE','VILLE','CATEGORIE','STATUT'],...ordered().map(t=>['LUMA',t.timestamp,t.name,(t.amount/100).toFixed(2),t.currency,t.city,categoryMeta(t).label,t.status])];
+  const rows=[['TYPE','DATE','LIBELLE','MONTANT','DEVISE','VILLE','CATEGORIE','STATUT'],...ordered().map(t=>[state.scenario||t.demo?'DEMO':'LUMA',t.timestamp,t.name,(t.amount/100).toFixed(2),t.currency,t.city,categoryMeta(t).label,t.status])];
   const csv='\uFEFF'+rows.map(row=>row.map(cell).join(';')).join('\r\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
   a.href=url;a.download='Luma-transactions-'+nowDay()+'.csv';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);
   toast('Export préparé.');
 }
-function lock() {unlocked=false;pin='';showCard=false;closeSheet();render();window.scrollTo({top:0});}
+function lock() {unlocked=false;pin='';showCard=false;editMode=false;editorDraft=null;editorUndo=null;editorNotice='';closeSheet();render();window.scrollTo({top:0});}
 async function pinInput(n) {
   if(pinChecking||blockedUntil>Date.now()||pin.length>=4)return;
   pin+=n;render();
@@ -380,6 +398,23 @@ document.addEventListener('click',async event=>{
       case'select-account':state.currency=id;persist();closeSheet();render();break;
       case'hide':state.hideBalance=!state.hideBalance;persist();render();break;
       case'profile':profileSheet();break;
+      case'editor':editMode=true;closeSheet();render();editorSheet();break;
+      case'editor-exit':editMode=false;editorDraft=null;editorNotice='';closeSheet();render();toast('Mode édition désactivé.');break;
+      case'editor-add-stop':{
+        const draft=readEditorDraft();if(draft.config.stops.length>=12)throw new Error('Le scénario permet jusqu’à 12 étapes.');
+        const last=draft.config.stops.at(-1),today=dateKey(new Date(),regionById(last.regionId).tz);
+        if(last.date>=today)throw new Error('Avance la date de la dernière étape avant d’en ajouter une autre.');
+        draft.config.stops.push({date:shiftDay(last.date,1),regionId:last.regionId});editorSheet();break;
+      }
+      case'editor-remove-stop':{
+        const draft=readEditorDraft(),index=Number(id);if(Number.isInteger(index)&&index>0&&index<draft.config.stops.length){draft.config.stops.splice(index,1);editorSheet();}break;
+      }
+      case'editor-undo':{
+        if(!editorUndo)break;
+        if(scenarioFingerprint(state)!==editorUndo.fingerprint)throw new Error('L’activité a changé depuis cette édition. Annulation indisponible pour préserver les nouvelles opérations.');
+        for(const field of editorUndo.fields){if(field.present)state[field.key]=JSON.parse(JSON.stringify(field.value));else delete state[field.key];}
+        editorUndo=null;editorNotice='Le dernier changement a été annulé.';editorDraft=scenarioDefaults(state);persist();render();editorSheet();break;
+      }
       case'topup':topupSheet();break;
       case'set-amount':{const input=document.querySelector('#sheet-root #amount');if(input){input.value=id;input.dispatchEvent(new Event('input',{bubbles:true}));}break;}
       case'send':sendSheet(id,b.dataset.schedule==='1');break;
@@ -425,7 +460,7 @@ document.addEventListener('click',async event=>{
       }
       case'share-request':{
         const r=state.requests.find(r=>r.id===id);if(!r)break;
-        const text='LUMA — Demande de paiement à '+r.name+' : '+formatMoney(r.cents,r.currency)+'.';
+        const text=(state.scenario?'DÉMONSTRATION — ':'')+'LUMA — Demande de paiement à '+r.name+' : '+formatMoney(r.cents,r.currency)+'.';
         if(navigator.share){try{await navigator.share({title:'Luma — demande',text});}catch(e){if(e.name!=='AbortError')await copy(text,'Texte copié.');}}
         else await copy(text,'Texte copié.');break;
       }
@@ -447,6 +482,14 @@ document.addEventListener('submit',event=>{
   const f=new FormData(form),cents=parseMoney(f.get('amount'));lastActive=Date.now();
   try{
     switch(form.id){
+      case'scenario-form':{
+        if(!editMode)throw new Error('Active le mode édition avant d’enregistrer un scénario.');
+        const draft=readEditorDraft(form),operation=event.submitter?.dataset.operation||form.dataset.operation||'regenerate',fields=captureEditorUndo();
+        const config={...draft.config,seed:crypto.randomUUID()};
+        const candidate=operation==='balances'?changeScenarioBalances(state,draft.balances):regenerateScenario(state,config,draft.balances);
+        if(!assertState(candidate))throw new Error('Le scénario n’a pas pu être validé. Aucune donnée n’a été modifiée.');
+        state=candidate;editorUndo={fields,fingerprint:scenarioFingerprint(state)};editorNotice=operation==='balances'?'Soldes de démonstration enregistrés.':'Historique de démonstration régénéré.';editorDraft=scenarioDefaults(state);persist();render();editorSheet();break;
+      }
       case'topup-form':topUp(state,cents,state.currency,f.get('method'));success('Solde mis à jour',formatMoney(cents,state.currency)+' ajoutés à votre compte.');break;
       case'send-form':{
         const recipient=String(f.get('recipient')).trim(),date=String(f.get('date'));
@@ -526,7 +569,7 @@ setInterval(()=>{
 },60000);
 window.addEventListener('offline',()=>toast('Mode hors ligne · votre espace reste disponible.'));
 window.addEventListener('online',()=>toast('Connexion rétablie.'));
-if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js?v=6').catch(()=>{});}
+if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js?v=7').catch(()=>{});}
 theme();persist();render();
 window.__lumaReady=true;
 if(window.visualViewport){
