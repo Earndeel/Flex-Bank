@@ -61,6 +61,25 @@ test('les cinq onglets et tous les principaux dialogues rendent sans erreur',asy
     await click(act);assert.match(sheet(),/role="dialog"/);await click('close-sheet');
   }
 });
+test('la page dépenses filtre les opérations, change de vue et revient à l’analyse sans modifier les données',async()=>{
+  await click('tab','analytics');
+  assert.match(app(),/Explorer les dépenses/);
+  const before=saved();
+  await click('expenses');
+  assert.match(app(),/expenses-screen/);
+  assert.match(app(),/Données de démonstration/);
+  assert.match(app(),/expenses-donut/);
+  await click('expenses-mode','bars');assert.match(app(),/expenses-timeline/);
+  await click('expenses-mode','line');assert.match(app(),/Dépenses cumulées/);
+  await click('expenses-period','month');assert.match(app(),/Par catégorie/);
+  await click('expenses-shift','-1');assert.match(app(),/expenses-period-nav/);
+  await click('expenses-period','all');
+  await click('expenses-category','restaurant');assert.match(app(),/<h2>Restaurants<\/h2>/);
+  await click('expenses-more');
+  await click('expenses-category','');assert.match(app(),/Toutes les dépenses/);
+  await click('expenses-back');assert.match(app(),/Votre argent/);
+  assert.deepEqual(saved(),before);
+});
 test('ajout, virement et change enregistrés depuis leurs formulaires',async()=>{
   await click('tab','home');
   const before=saved().wallets.EUR;

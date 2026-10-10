@@ -3,6 +3,7 @@ import {
   initialState,migrateState,assertState,rollForward,dateKey,shiftDay,regionById,regionFromCoordinates,
   sendMoney,topUp,exchange,pocketMove,monthMetrics,formatMoney,parseMoney,applyTransaction
 } from './core.js?v=4';
+import {expenseMetrics,renderExpenseSummary,shiftExpensePeriod} from './expenses.js?v=1';
 
 const ICONS = {
   home:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',
@@ -55,6 +56,7 @@ try { const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'null'); state=a
 catch { state=initialState(); storageAvailable=false; }
 let unlocked=false,tab='home',view='main',filter='all',search='',pin='',pinChecking=false,attempts=0,blockedUntil=0;
 let activeMonth=dateKey(new Date()).slice(0,7),showCard=false,hiddenAt=0,lastActive=Date.now(),toastTimer,previousFocus;
+let expensesPeriod='year',expensesAnchor='',expensesMode='donut',expensesCategory='',expensesLimit=20;
 const root=document.getElementById('app'),sheetRoot=document.getElementById('sheet-root');
 const money=(amount,currency='EUR')=>state.hideBalance?'••••':formatMoney(amount,currency);
 const currentRegion=()=>regionById(state.location.regionId);
@@ -155,11 +157,22 @@ function analytics() {
   const stats=monthMetrics(state,activeMonth),categories=Object.entries(stats.categories).sort((a,b)=>b[1]-a[1]),pct=Math.min(100,stats.expense/state.budget*100);
   const monthLabel=new Intl.DateTimeFormat('fr-FR',{month:'long',year:'numeric'}).format(new Date(activeMonth+'-15T12:00:00Z'));
   return `${topbar()}<p class="page-eyebrow">Une vue d’ensemble</p><h1 class="page-heading">Votre argent.</h1><div class="month-bar"><button class="icon-button" data-act="month" data-id="-1" aria-label="Mois précédent">${icon('back')}</button><h2>${monthLabel}</h2><button class="icon-button" data-act="month" data-id="1" aria-label="Mois suivant" ${activeMonth>=nowDay().slice(0,7)?'disabled':''}>${icon('chevron')}</button></div>
+  <button class="expenses-entry" data-act="expenses">${icon('chart')}<span><strong>Explorer les dépenses</strong><small>Répartition, catégories et opérations</small></span>${icon('chevron')}</button>
   <div class="stat-grid"><div class="stat-card">${icon('arrowUp')}<p>Dépenses · EUR</p><h3>${esc(money(stats.expense))}</h3></div><div class="stat-card">${icon('arrowDown')}<p>Entrées · EUR</p><h3 class="positive">${esc(money(stats.income))}</h3></div></div>
   <div class="chart-panel"><div class="chart-header"><span>Le rythme du mois</span><small>EUR</small></div>${state.hideBalance?'<div class="empty">Montants masqués</div>':chartSVG(stats)}</div>
   <div class="section-title"><h2>Où va votre argent ?</h2></div><div class="panel" style="margin-top:0">${categories.length?categories.map(([cat,value])=>{const c=CATEGORY_META[cat]||CATEGORY_META.transfer;return `<div class="category-row"><span class="category-dot" style="background:${c.color}"></span><span class="category-name">${c.label}</span><span class="category-value">${esc(money(value))}<small>${Math.round(value/stats.expense*100)} %</small></span></div>`;}).join(''):'<div class="empty">Aucune dépense sur cette période.</div>'}</div>
   <div class="panel"><div class="chart-header"><span>Budget mensuel</span><button data-act="budget" style="color:var(--accent);font-size:11px">Modifier</button></div><span style="font-size:23px;letter-spacing:-.7px;font-weight:600">${esc(money(Math.max(0,state.budget-stats.expense)))}</span><p style="font-size:11px;color:var(--sub);margin-top:6px">${stats.expense>state.budget?'Budget dépassé':'encore disponibles sur votre budget'}</p><div class="budget-track"><span style="width:${pct}%"></span></div><div class="budget-figures"><span>${esc(money(stats.expense))} utilisés</span><span>${esc(money(state.budget))}</span></div></div>
   <button class="outline-button" data-act="export">${icon('download')}Exporter les données</button><p class="demo-footnote">Le change et les mouvements<br>d’épargne sont exclus des dépenses.</p>`;
+}
+function expenses() {
+  const metrics=expenseMetrics(state.transactions,{period:expensesPeriod,anchor:expensesAnchor,timeZone:currentRegion().tz});
+  const transactions=expensesCategory?metrics.transactions.filter(t=>t.category===expensesCategory):metrics.transactions;
+  const label=expensesCategory?(CATEGORY_META[expensesCategory]?.label||'Autres'):'Toutes les dépenses';
+  return `${renderExpenseSummary(metrics,{mode:expensesMode,category:expensesCategory,hidden:state.hideBalance,money,icon,metadata:CATEGORY_META})}
+    <div class="expenses-section-heading" id="expenses-transactions"><h2>${esc(label)}</h2>${expensesCategory?'<button class="expenses-clear" data-act="expenses-category" data-id="">Tout voir</button>':`<span>${transactions.length} opération${transactions.length>1?'s':''}</span>`}</div>
+    ${transactions.length?txGroups(transactions.slice(0,expensesLimit)):'<div class="expenses-empty">Aucune opération à afficher.</div>'}
+    ${transactions.length>expensesLimit?'<button class="expenses-more" data-act="expenses-more">Afficher plus d’opérations</button>':''}
+    <p class="expenses-note">Dépenses du compte EUR. Les opérations refusées,<br>le change et les mouvements d’épargne sont exclus.</p>`;
 }
 function allTransactions() {
   let txs=ordered().filter(t=>t.currency===state.currency);
@@ -176,8 +189,8 @@ function lockHTML() {
 function render() {
   theme();
   if(!unlocked){root.innerHTML=lockHTML();return;}
-  const content=view==='transactions'?allTransactions():({home,cards,payments,savings,analytics}[tab]||home)();
-  root.innerHTML=`<section class="screen">${content}${!storageAvailable?'<div class="info-box neutral">Les données ne peuvent pas être sauvegardées dans ce navigateur.</div>':''}</section>${nav()}`;
+  const content=view==='expenses'?expenses():view==='transactions'?allTransactions():({home,cards,payments,savings,analytics}[tab]||home)();
+  root.innerHTML=`<section class="screen${view==='expenses'?' expenses-screen':''}">${content}${!storageAvailable?'<div class="info-box neutral">Les données ne peuvent pas être sauvegardées dans ce navigateur.</div>':''}</section>${nav()}`;
 }
 function openSheet(title,content) {
   previousFocus=document.activeElement;
@@ -348,6 +361,21 @@ document.addEventListener('click',async event=>{
   try{
     switch(act){
       case'tab':tab=id;view='main';closeSheet();render();window.scrollTo({top:0});break;
+      case'expenses':view='expenses';expensesPeriod='year';expensesAnchor=activeMonth.slice(0,4);expensesMode='donut';expensesCategory='';expensesLimit=20;closeSheet();render();window.scrollTo({top:0});break;
+      case'expenses-back':view='main';tab='analytics';render();window.scrollTo({top:0});break;
+      case'expenses-mode':if(['line','bars','donut'].includes(id)){expensesMode=id;render();}break;
+      case'expenses-period':{
+        if(!['month','year','all'].includes(id))break;
+        const year=expensesAnchor.slice(0,4)||activeMonth.slice(0,4);
+        expensesAnchor=id==='year'?year:id==='month'?(expensesAnchor.length===7?expensesAnchor:year+'-'+activeMonth.slice(5)):'';
+        expensesPeriod=id;expensesCategory='';expensesLimit=20;render();break;
+      }
+      case'expenses-shift':{
+        const delta=Number(id),metrics=expenseMetrics(state.transactions,{period:expensesPeriod,anchor:expensesAnchor,timeZone:currentRegion().tz});
+        if(expensesPeriod!=='all'&&(delta===-1||(delta===1&&metrics.canNext))){expensesAnchor=shiftExpensePeriod(metrics.anchor,expensesPeriod,delta);expensesCategory='';expensesLimit=20;render();}break;
+      }
+      case'expenses-category':expensesCategory=expensesCategory===id?'':id;expensesLimit=20;render();document.getElementById('expenses-transactions')?.scrollIntoView({block:'start',behavior:'smooth'});break;
+      case'expenses-more':expensesLimit+=20;render();break;
       case'accounts':accountSheet();break;
       case'select-account':state.currency=id;persist();closeSheet();render();break;
       case'hide':state.hideBalance=!state.hideBalance;persist();render();break;
