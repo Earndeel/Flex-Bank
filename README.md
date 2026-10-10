@@ -1,8 +1,8 @@
-# Luma — simulation personnelle
+# Flex — simulation personnelle
 
-Application web statique en français, adaptée à l’iPhone et installable sur l’écran d’accueil.
+Application web statique adaptée à l’iPhone et installable sur l’écran d’accueil.
 
-Luma possède sa propre identité visuelle. Les soldes, comptes, cartes, commerces et transactions proviennent de l’activité enregistrée dans l’application.
+Flex possède sa propre identité visuelle. Les soldes, comptes, cartes, commerces et transactions proviennent de l’activité enregistrée dans l’application.
 
 
 
@@ -53,12 +53,10 @@ Ouvrir le profil de Lucas, puis « Mode édition ». Choisir les soldes des cinq
 
 ## Interface mobile
 
-Refonte visuelle d’octobre 2026, fondée sur les [captures iPhone publiées par Revolut](https://apps.apple.com/fr/app/revolut-plus-quune-banque/id932493382) et les [visuels officiels de comptes](https://www.revolut.com/revolut-sziget-cash-reward/). Luma conserve son nom, ses parcours et son identification comme démonstration. La navigation présente les fonctionnalités effectivement disponibles dans Luma.
+Refonte visuelle d’octobre 2026 fondée sur les quatre captures iPhone fournies : accueil, dépenses, analyses et Invest. Flex reprend les proportions, le fond noir, les surfaces arrondies, les boutons avec relief et la navigation flottante à six entrées. Les illustrations SVG et l’icône F sont propres à Flex. Aucune capture, coordonnée bancaire ou donnée de compte de référence n’est intégrée.
 
-- Accueil : recherche en capsule, raccourcis Analyse/Cartes, solde central, sélecteur de comptes, actions circulaires et opérations récentes regroupées.
-- Widgets des dépenses et de l’épargne calculés à partir de l’historique ; aucune courbe n’est affichée lorsque les montants sont masqués.
-- Fond graphite, surfaces translucides, avatars ronds, typographie système iOS et barre de navigation pleine largeur.
-- Style commun aux cartes, paiements, poches, analyses, réglages et mode édition.
-- Chargement animé et cache hors ligne mis à jour. Les données locales et les règles du générateur restent inchangées.
+Les analyses lisent le registre existant : dépenses, revenus, cashflow et patrimoine multidevise avec les taux fixes de l’application. Les périodes 1W, 1M, 6M et 1Y sont disponibles ; 1W couvre la semaine du lundi au dimanche et 6M les six mois calendaires se terminant au mois choisi. Les opérations futures, refusées, de change et de poche sont exclues des dépenses. Les boutons de période donnent accès aux périodes antérieures et à l’historique complet.
 
-Les références publiques varient selon le thème et le pays ; il ne s’agit pas d’une version officielle de Revolut. Les tests de parcours s’exécutent avec `npm test` ; le rendu Safari n’a pas été vérifié dans un navigateur.
+Cartes, paiements, poches, localisation et mode édition restent accessibles. Invest possède une trésorerie de présentation et une liste de suivi, enregistrées séparément du registre bancaire. Il n’y a aucune cotation, aucun ordre ni rendement réel. Credit est un calculateur illustratif hors frais ; Crypto est un catalogue sans achat ; les FlexPoints sont des points fictifs sans valeur. Le code 2589 et la clé de stockage historique sont conservés pour éviter toute perte de données lors du renommage.
+
+Les tests valident les calculs, les invariants du registre et les parcours via un adaptateur DOM en mémoire. Ils ne vérifient pas le rendu de Safari. Le déploiement reste privé et le pied de page identifie l’application comme démonstration sans compte réel.

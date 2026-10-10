@@ -2,13 +2,22 @@ import {
   FLOOR,STORAGE_KEY,PIN_HASH,RATES,CURRENCIES,REGIONS,CATEGORY_META,
   initialState,migrateState,assertState,rollForward,dateKey,shiftDay,regionById,regionFromCoordinates,
   sendMoney,topUp,exchange,pocketMove,monthMetrics,formatMoney,parseMoney,applyTransaction
-} from './core.js?v=8';
-import {expenseMetrics,renderExpenseSummary,shiftExpensePeriod} from './expenses.js?v=1';
-import {SCENARIO_FIELDS,scenarioDefaults,scenarioFingerprint,regenerateScenario,changeScenarioBalances,renderScenarioEditor} from './scenario.js?v=2';
+} from './core.js?v=9';
+import {expenseMetrics,renderExpenseSummary,shiftExpensePeriod} from './expenses.js?v=2';
+import {SCENARIO_FIELDS,scenarioDefaults,scenarioFingerprint,regenerateScenario,changeScenarioBalances,renderScenarioEditor} from './scenario.js?v=3';
+
+import {displayMoney,dashboardMetrics,periodRange,creditProjection,EXPENSE_COLORS} from './ui-metrics.js?v=1';
 
 const ICONS = {
-  brandHome:'<path d="M7 3v18h12" stroke-width="3"/>',
+  brandHome:'<path d="M7 21V4h12M7 11h9" stroke-width="3.5"/>',
   chartSolid:'<rect x="3" y="11" width="4" height="10" rx="1.5" fill="currentColor" stroke="none"/><rect x="10" y="3" width="4" height="18" rx="1.5" fill="currentColor" stroke="none"/><rect x="17" y="7" width="4" height="14" rx="1.5" fill="currentColor" stroke="none"/>',
+  building:'<path d="m3 8 9-5 9 5v2H3zM3 21h18M5 10v9m7-9v9m7-9v9" stroke-width="2.8"/>',
+  move:'<path d="M3 6h3c6 0 6 12 12 12h3m-4-4 4 4-4 4M3 18h3C12 18 12 6 18 6h3m-4-4 4 4-4 4" stroke-width="2.6"/>',
+  trend:'<path d="m3 17 6-6 4 4 8-10M15 5h6v6" stroke-width="3"/>',
+  coins:'<ellipse cx="8" cy="5" rx="5" ry="3" fill="currentColor" stroke="none"/><path d="M3 10c2 3 8 3 10 0M3 15c2 3 7 3 9 1" stroke-width="3"/><ellipse cx="17" cy="13" rx="5" ry="3" fill="currentColor" stroke="none"/><path d="M12 18c2 3 8 3 10 0" stroke-width="3"/>',
+  bitcoin:'<path d="M8 4v16M6 5h8c7 0 7 7 0 7H8m6 0c7 0 7 7 0 7H6M11 2v3m4-3v3m-4 14v3m4-3v3" stroke-width="2.8"/>',
+  rewards:'<path d="m12 2 9 5v10l-9 5-9-5V7z" fill="currentColor" stroke="none"/><path d="m12 6 1.5 4.5L18 12l-4.5 1.5L12 18l-1.5-4.5L6 12l4.5-1.5z" fill="var(--nav)" stroke="none"/>',
+  cash:'<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 8h1m10 8h1"/>',
   home:'<path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/>',
   cards:'<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M3 10h18M7 15h4"/>',
   arrows:'<path d="M4 7h16m-4-4 4 4-4 4M20 17H4m4-4-4 4 4 4"/>',
@@ -62,7 +71,12 @@ let activeMonth=dateKey(new Date()).slice(0,7),showCard=false,hiddenAt=0,lastAct
 let expensesPeriod='year',expensesAnchor='',expensesMode='donut',expensesCategory='',expensesLimit=20;
 let editMode=false,editorDraft=null,editorUndo=null,editorNotice='';
 const root=document.getElementById('app'),sheetRoot=document.getElementById('sheet-root');
-const money=(amount,currency='EUR')=>state.hideBalance?'••••':formatMoney(amount,currency);
+const money=(amount,currency='EUR')=>state.hideBalance?'••••':displayMoney(amount,currency);
+const roundedMoney=(amount,currency='EUR')=>state.hideBalance?'••••':displayMoney(amount,currency,{digits:0});
+let analyticsPeriod='week',promoIndex=0,promoDismissed=false,brokerageExpanded=true;
+let preview={cash:0,watchlist:[]};
+try{const savedPreview=JSON.parse(localStorage.getItem('flex-preview-v1')||'null');if(savedPreview&&Number.isSafeInteger(savedPreview.cash)&&savedPreview.cash>=0&&Array.isArray(savedPreview.watchlist))preview={cash:savedPreview.cash,watchlist:savedPreview.watchlist.filter(x=>typeof x==='string')};}catch{}
+const savePreview=()=>{try{localStorage.setItem('flex-preview-v1',JSON.stringify(preview));}catch{toast('Les réglages du portefeuille restent disponibles pendant cette session.');}};
 const currentRegion=()=>regionById(state.location.regionId);
 const nowDay=()=>dateKey(new Date(),currentRegion().tz);
 const ordered=()=>[...state.transactions].sort((a,b)=>b.timestamp.localeCompare(a.timestamp));
@@ -72,26 +86,31 @@ function persist() {
 }
 function theme() {
   document.body.classList.toggle('dark',state.theme==='dark');
-  document.querySelector('meta[name="theme-color"]').content=state.theme==='dark'?'#09090b':'#f7f7f7';
+  document.querySelector('meta[name="theme-color"]').content=state.theme==='dark'?'#000000':'#f7f7f7';
 }
 function toast(message) {
   const el=document.getElementById('toast');el.textContent=message;el.classList.add('show');
   clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3700);
 }
-function topbar() {
-  return `<header class="topbar"><button class="profile-button" data-act="profile" aria-label="Profil de Lucas Jouvençon"><span class="avatar">LJ</span></button><button class="header-search" data-act="search" aria-label="Rechercher une transaction">${icon('search')}<span>Rechercher</span></button><div class="top-tools"><button class="icon-button" data-act="tab" data-id="analytics" aria-label="Analyse des dépenses">${icon('chartSolid')}</button><button class="icon-button" data-act="tab" data-id="cards" aria-label="Vos cartes">${icon('cards')}</button></div></header>`;
+function topbar(invest=false) {
+  return `<header class="topbar"><button class="profile-button" data-act="profile" aria-label="Profil de Lucas Jouvençon"><span class="avatar">LJ</span></button><button class="header-search" data-act="${invest?'invest-search':'search'}" aria-label="${invest?'Explorer les instruments':'Rechercher une transaction'}">${icon('search')}<span>Search</span></button><div class="top-tools"><button class="icon-button" data-act="tab" data-id="analytics" aria-label="Analyse des dépenses">${icon('chartSolid')}</button><button class="icon-button" data-act="${invest?'invest-market':'tab'}" ${invest?'':'data-id="cards"'} aria-label="${invest?'Explorer les marchés de démonstration':'Vos cartes'}">${icon(invest?'globe':'cards')}</button></div></header>`;
 }
 function nav() {
-  const tabs=[['home','brandHome','Accueil'],['cards','cards','Cartes'],['payments','arrows','Paiements'],['savings','pocket','Épargne'],['analytics','chart','Analyse']];
-  return `<nav class="nav" aria-label="Navigation principale">${tabs.map(([id,i,label])=>`<button class="nav-item ${tab===id?'active':''}" data-act="tab" data-id="${id}" ${tab===id?'aria-current="page"':''}>${icon(i)}<span>${label}</span></button>`).join('')}</nav>`;
+  const tabs=[['home','brandHome','Home'],['credit','coins','Credit'],['invest','trend','Invest'],['payments','arrows','Payments'],['crypto','bitcoin','Crypto'],['points','rewards','FlexPoints']];
+  const active=['cards','savings'].includes(tab)?'home':tab;
+  return `<nav class="nav" aria-label="Navigation principale">${tabs.map(([id,i,label])=>`<button class="nav-item ${active===id?'active':''}" data-act="tab" data-id="${id}" ${active===id?'aria-current="page"':''}>${icon(i)}<span>${label}</span></button>`).join('')}</nav>`;
 }
+
 function categoryMeta(t) {return CATEGORY_META[t.category]||CATEGORY_META.transfer;}
 function txRow(t) {
   const c=categoryMeta(t),shown=t.status==='declined'?t.attemptedAmount:t.amount;
-  const stamp=new Intl.DateTimeFormat('fr-FR',{timeZone:regionById(t.region).tz,hour:'2-digit',minute:'2-digit'}).format(new Date(t.timestamp));
-  const original=t.originalAmount&&t.originalCurrency!==t.currency?formatMoney(t.originalAmount,t.originalCurrency):c.label;
-  return `<button class="tx-row" data-act="transaction" data-id="${esc(t.id)}"><span class="tx-icon" style="background:${c.color}13;color:${c.color}">${icon(c.icon)}</span><span class="tx-body"><span class="tx-name" style="display:block">${esc(t.name)}</span><span class="tx-sub" style="display:block">${esc(t.city||'En ligne')} · ${esc(stamp)}${t.status==='declined'?' · Refusé':''}</span></span><span class="tx-values"><span class="tx-amount ${shown>0?'positive':''} ${t.status==='declined'?'declined':''}" style="display:block">${shown>0?'+':''}${esc(money(shown,t.currency))}</span><span class="tx-original" style="display:block">${esc(state.hideBalance?'••••':original)}</span></span></button>`;
+  const stamp=new Intl.DateTimeFormat('en-GB',{timeZone:regionById(t.region).tz,day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(t.timestamp));
+  const original=t.originalAmount&&t.originalCurrency!==t.currency?money(-Math.abs(t.originalAmount),t.originalCurrency):'';
+  const initials=t.name.split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase();
+  const color=EXPENSE_COLORS[t.category]||'#353535';
+  return `<button class="tx-row" data-act="transaction" data-id="${esc(t.id)}"><span class="tx-icon merchant-avatar" style="--merchant-color:${color}">${t.category==='income'||t.category==='transfer'?esc(initials):icon(c.icon)}${shown>0?`<span class="merchant-direction">${icon('arrowDown')}</span>`:''}</span><span class="tx-body"><span class="tx-name" style="display:block">${esc(t.name)}</span><span class="tx-sub" style="display:block">${esc(stamp)}${t.status==='declined'?' · Refusé':''}</span></span><span class="tx-values"><span class="tx-amount ${shown>0?'positive':''} ${t.status==='declined'?'declined':''}" style="display:block">${shown>0?'+':''}${esc(money(shown,t.currency))}</span>${original?`<span class="tx-original" style="display:block">${esc(original)}</span>`:''}</span></button>`;
 }
+
 function txGroups(transactions,limit=null) {
   const list=limit?transactions.slice(0,limit):transactions;
   if (!list.length) return `<div class="panel empty">${icon('arrows')}Aucune transaction pour ce compte.<br>Ajoute de l’argent pour commencer.</div>`;
@@ -103,12 +122,14 @@ function txGroups(transactions,limit=null) {
   }).join('');
 }
 function balanceHTML() {
-  if(state.hideBalance)return '•• •••<span class="decimals">,•• '+esc(CURRENCIES[state.currency].symbol)+'</span>';
-  const parts=new Intl.NumberFormat('fr-FR',{style:'currency',currency:state.currency}).formatToParts(state.wallets[state.currency]/100);
-  const before=parts.filter(p=>['integer','group'].includes(p.type)).map(p=>p.value).join('');
-  const tail=parts.filter(p=>!['integer','group'].includes(p.type)).map(p=>p.value).join('');
-  return esc(before)+'<span class="decimals">'+esc(tail)+'</span>';
+  const symbol=CURRENCIES[state.currency].symbol;
+  if(state.hideBalance)return esc(symbol)+'•• •••<span class="decimals">,••</span>';
+  const parts=new Intl.NumberFormat('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2}).formatToParts(state.wallets[state.currency]/100);
+  const integer=parts.filter(p=>['integer','group'].includes(p.type)).map(p=>p.value).join('');
+  const decimal=parts.filter(p=>['decimal','fraction'].includes(p.type)).map(p=>p.value).join('');
+  return esc(symbol+integer)+'<span class="decimals">'+esc(decimal)+'</span>';
 }
+
 function widgetSpendingChart(metrics) {
   if(state.hideBalance)return '';
   const days=Math.max(Number(nowDay().slice(-2)),...metrics.spending.map(t=>Number(dateKey(new Date(t.timestamp),regionById(t.region).tz).slice(-2)))),daily=Array(days+1).fill(0);
@@ -121,20 +142,32 @@ function widgetSpendingChart(metrics) {
   const points=cumulative.map((value,i)=>`${(i/days*150).toFixed(1)},${(48-value/max*41).toFixed(1)}`);
   return `<svg class="widget-line" viewBox="0 0 150 54" preserveAspectRatio="none" role="img" aria-label="Dépenses cumulées du mois"><title>${esc(formatMoney(metrics.expense))} de dépenses ce mois-ci</title><defs><linearGradient id="widget-spend-fill" x1="0" y1="0" x2="0" y2="1"><stop stop-color="currentColor" stop-opacity=".25"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs><path d="M${points.join(' L')} L150,54 L0,54Z" fill="url(#widget-spend-fill)"/><polyline points="${points.join(' ')}" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
+function promo(invest=false) {
+  if(promoDismissed&&!invest)return '';
+  const slides=invest?[
+    ['Explore your portfolio','Discover instruments and build a watchlist.','invest-market','assets']
+  ]:[
+    ['Your world, with Flex','Choose your countries and plan your next chapter.','location','travel'],
+    ['Make it yours','Adjust your balances and your daily activity.','editor','card'],
+    ['Room for your plans','Set a goal and organise your savings.','savings-open','card']
+  ];
+  const [title,text,act,art]=slides[invest?0:promoIndex];
+  return `<section class="promo-carousel" aria-label="${invest?'Découvrir Invest':'À découvrir'}"><div class="reference-promo"><button class="promo-content" data-act="${act}"><strong>${title}</strong><span>${text}</span><img src="./promo-${art}.svg?v=1" alt="" width="150" height="110"></button>${invest?'':`<button class="promo-close" data-act="promo-dismiss" aria-label="Masquer cette carte">${icon('close')}</button>`}</div>${invest?'':`<div class="carousel-dots" role="group" aria-label="Cartes à découvrir">${slides.map((_,i)=>`<button class="${i===promoIndex?'is-active':''}" data-act="promo-slide" data-id="${i}" aria-label="Carte ${i+1}" aria-pressed="${i===promoIndex}"></button>`).join('')}</div>`}</section>`;
+}
 function home() {
   const r=currentRegion(),metrics=monthMetrics(state,nowDay().slice(0,7));
-  const recent=ordered().filter(t=>t.currency===state.currency).slice(0,3),pockets=state.pockets.reduce((n,p)=>n+p.balance,0);
-  const digits=String(Math.trunc(state.wallets[state.currency]/100)).length,balanceSize=digits>8?32:digits>6?40:54;
-  return `${topbar()}<section class="hero" aria-label="Solde du compte ${state.currency}"><button class="account-select" data-act="accounts">Personnel · ${state.currency}</button><div class="hero-balance"><h1 class="balance" style="--balance-size:${balanceSize}px">${balanceHTML()}</h1><button class="balance-toggle" data-act="hide" aria-label="${state.hideBalance?'Afficher les montants':'Masquer les montants'}">${icon(state.hideBalance?'eyeOff':'eye')}</button></div><button class="accounts-pill" data-act="accounts">Comptes ${icon('down')}</button><div class="account-pagination" role="group" aria-label="Choisir un compte">${Object.entries(CURRENCIES).map(([currency,meta])=>`<button data-act="select-account" data-id="${currency}" class="${currency===state.currency?'is-active':''}" aria-pressed="${currency===state.currency}" aria-label="Compte ${esc(meta.name)} · ${currency}"><span aria-hidden="true"></span></button>`).join('')}</div></section>
-  <div class="quick-actions">${[['topup','plus','Ajouter de l’argent'],['exchange','exchange','Échanger'],['account-details','info','Informations'],['more','more','Plus']].map(([act,i,label])=>`<button class="quick-action" data-act="${act}"><span class="quick-icon">${icon(i)}</span><span>${label}</span></button>`).join('')}</div>
-  <h2 class="sr-only">Vos transactions</h2><div class="transactions recent-transactions">${recent.length?recent.map(txRow).join(''):'<div class="empty">Aucune transaction pour ce compte.</div>'}<button class="recent-more" data-act="all-transactions">Tout afficher</button></div>
-  <div class="section-title"><h2>Widgets</h2><button data-act="notifications" aria-label="Afficher les notifications">${icon('bell')}</button></div><div class="home-widgets"><button class="home-widget" data-act="expenses" data-period="month"><p>Dépensé ce mois-ci</p><strong>${esc(money(metrics.expense))}</strong><small>Compte EUR</small>${widgetSpendingChart(metrics)}</button><button class="home-widget" data-act="tab" data-id="savings"><p>Épargne totale</p><strong>${esc(money(pockets))}</strong><small>${state.pockets.length} poche${state.pockets.length>1?'s':''}</small><span class="widget-icons" aria-hidden="true"><span>${icon('pocket')}</span><span>${icon('plane')}</span><span>${icon('shield')}</span></span></button></div>
-  <button class="mini-promo" data-act="send"><span class="promo-icon">${icon('arrowUp')}</span><span><h3>Envoyer de l’argent</h3><p>À un contact ou à un bénéficiaire</p></span>${icon('chevron')}</button>
+  const recent=ordered().filter(t=>t.currency===state.currency).slice(0,4),pockets=state.pockets.reduce((n,p)=>n+p.balance,0);
+  const digits=String(Math.trunc(state.wallets[state.currency]/100)).length,balanceSize=digits>8?32:digits>6?38:44;
+  return `${topbar()}<section class="hero" aria-label="Solde du compte ${state.currency}"><button class="account-select" data-act="accounts"><span class="account-flag" aria-hidden="true">${CURRENCIES[state.currency].flag}</span>Personal · ${state.currency}</button><div class="hero-balance"><h1 class="balance" style="--balance-size:${balanceSize}px"><button data-act="hide" aria-label="${state.hideBalance?'Afficher les montants':'Masquer les montants'}">${balanceHTML()}</button></h1></div><button class="account-reference" data-act="account-details">${icon('building')}<span>TEST-FLEX-${state.currency}-0428</span></button><button class="accounts-pill" data-act="accounts">Accounts</button></section>
+  <div class="quick-actions">${[['topup','plus','Add money'],['move','move','Move'],['account-details','building','Details'],['more','more','More']].map(([act,i,label])=>`<button class="quick-action" data-act="${act}"><span class="quick-icon">${icon(i)}</span><span>${label}</span></button>`).join('')}</div>
+  ${promo()}<h2 class="sr-only">Vos transactions</h2><div class="transactions recent-transactions">${recent.length?recent.map(txRow).join(''):'<div class="empty">Aucune transaction pour ce compte.</div>'}<button class="recent-more" data-act="all-transactions">See all</button></div>
+  <div class="section-title"><h2>Widgets</h2><button data-act="notifications" aria-label="Afficher les notifications">${icon('bell')}</button></div><div class="home-widgets"><button class="home-widget" data-act="expenses" data-period="month"><p>Spent this month</p><strong>${esc(money(metrics.expense))}</strong><small>Personal · EUR</small>${widgetSpendingChart(metrics)}</button><button class="home-widget" data-act="tab" data-id="savings"><p>Savings</p><strong>${esc(money(pockets))}</strong><small>${state.pockets.length} pockets</small><span class="widget-icons" aria-hidden="true"><span>${icon('pocket')}</span><span>${icon('plane')}</span><span>${icon('shield')}</span></span></button></div>
   <div class="activity-foot">${icon('location')}<button data-act="location">${r.flag} ${esc(r.city)}</button></div>`;
 }
+
 function cardVisual(extra=null) {
   const frozen=extra?extra.frozen:state.cards.frozen,last4=extra?extra.last4:state.cards.last4;
-  return `<div class="card-visual ${frozen?'frozen':''}"><div class="card-top"><span class="card-brand">luma</span></div><div class="card-chip" aria-hidden="true">${Array.from({length:6},()=>'<i></i>').join('')}</div><div class="card-number">${showCard?'0000 0000':'•••• •••• ••••'} ${esc(last4)}</div><div class="card-bottom"><span class="card-holder">Lucas Jouvençon<br><span style="display:block;margin-top:6px;font-size:8px;color:#8b9ab0">CARTE ${extra?.type==='disposable'?'ÉPHÉMÈRE':'VIRTUELLE'}</span></span><span class="card-mark" aria-hidden="true"></span></div></div>`;
+  return `<div class="card-visual ${frozen?'frozen':''}"><div class="card-top"><span class="card-brand">flex</span></div><div class="card-chip" aria-hidden="true">${Array.from({length:6},()=>'<i></i>').join('')}</div><div class="card-number">${showCard?'0000 0000':'•••• •••• ••••'} ${esc(last4)}</div><div class="card-bottom"><span class="card-holder">Lucas Jouvençon<br><span style="display:block;margin-top:6px;font-size:8px;color:#8b9ab0">CARTE ${extra?.type==='disposable'?'ÉPHÉMÈRE':'VIRTUELLE'}</span></span><span class="card-mark" aria-hidden="true"></span></div></div>`;
 }
 function toggleRow(label,description,key,enabled,i) {
   return `<div class="setting-row"><div class="setting-left">${icon(i)}<div><div class="setting-name">${label}</div><div class="setting-description">${description}</div></div></div><button class="toggle ${enabled?'on':''}" data-act="toggle-setting" data-id="${key}" role="switch" aria-checked="${enabled}" aria-label="${label}"></button></div>`;
@@ -169,26 +202,59 @@ function chartSVG(metrics) {
   const max=Math.max(...weeks,1);
   return `<svg class="bar-chart" viewBox="0 0 350 145" role="img" aria-label="Dépenses par semaine"><path d="M0 108H350M0 60H350M0 12H350" stroke="var(--line)" stroke-dasharray="3 4"/>${weeks.map((v,i)=>{const height=Math.max(3,88*v/max),x=18+i*68;return `<rect x="${x}" y="${108-height}" width="38" height="${height}" rx="8" fill="${i===3?'#667ff1':'#c2cef3'}"/><text x="${x+19}" y="135" text-anchor="middle" font-size="10" fill="var(--sub)">S${i+1}</text><title>Semaine ${i+1} : ${esc(formatMoney(v))}</title>`;}).join('')}</svg>`;
 }
-function analytics() {
-  const stats=monthMetrics(state,activeMonth),categories=Object.entries(stats.categories).sort((a,b)=>b[1]-a[1]),pct=Math.min(100,stats.expense/state.budget*100);
-  const monthLabel=new Intl.DateTimeFormat('fr-FR',{month:'long',year:'numeric'}).format(new Date(activeMonth+'-15T12:00:00Z'));
-  return `${topbar()}<p class="page-eyebrow">Une vue d’ensemble</p><h1 class="page-heading">Votre argent.</h1><div class="month-bar"><button class="icon-button" data-act="month" data-id="-1" aria-label="Mois précédent">${icon('back')}</button><h2>${monthLabel}</h2><button class="icon-button" data-act="month" data-id="1" aria-label="Mois suivant" ${activeMonth>=nowDay().slice(0,7)?'disabled':''}>${icon('chevron')}</button></div>
-  <button class="expenses-entry" data-act="expenses">${icon('chart')}<span><strong>Explorer les dépenses</strong><small>Répartition, catégories et opérations</small></span>${icon('chevron')}</button>
-  <div class="stat-grid"><div class="stat-card">${icon('arrowUp')}<p>Dépenses · EUR</p><h3>${esc(money(stats.expense))}</h3></div><div class="stat-card">${icon('arrowDown')}<p>Entrées · EUR</p><h3 class="positive">${esc(money(stats.income))}</h3></div></div>
-  <div class="chart-panel"><div class="chart-header"><span>Le rythme du mois</span><small>EUR</small></div>${state.hideBalance?'<div class="empty">Montants masqués</div>':chartSVG(stats)}</div>
-  <div class="section-title"><h2>Où va votre argent ?</h2></div><div class="panel" style="margin-top:0">${categories.length?categories.map(([cat,value])=>{const c=CATEGORY_META[cat]||CATEGORY_META.transfer;return `<div class="category-row"><span class="category-dot" style="background:${c.color}"></span><span class="category-name">${c.label}</span><span class="category-value">${esc(money(value))}<small>${Math.round(value/stats.expense*100)} %</small></span></div>`;}).join(''):'<div class="empty">Aucune dépense sur cette période.</div>'}</div>
-  <div class="panel"><div class="chart-header"><span>Budget mensuel</span><button data-act="budget" style="color:var(--accent);font-size:11px">Modifier</button></div><span style="font-size:23px;letter-spacing:-.7px;font-weight:600">${esc(money(Math.max(0,state.budget-stats.expense)))}</span><p style="font-size:11px;color:var(--sub);margin-top:6px">${stats.expense>state.budget?'Budget dépassé':'encore disponibles sur votre budget'}</p><div class="budget-track"><span style="width:${pct}%"></span></div><div class="budget-figures"><span>${esc(money(stats.expense))} utilisés</span><span>${esc(money(state.budget))}</span></div></div>
-  <button class="outline-button" data-act="export">${icon('download')}Exporter les données</button><p class="demo-footnote">Le change et les mouvements<br>d’épargne sont exclus des dépenses.</p>`;
+function distribution(items,otherLabel='Others') {
+  const total=items.reduce((sum,c)=>sum+c.value,0),leading=items[0],other=total-(leading?.value||0);
+  if(!leading)return '<div class="distribution-empty">No activity yet</div>';
+  const label={transfer:'Transfers',restaurant:'Restaurants',shopping:'Shopping',groceries:'Groceries',transport:'Transport',coffee:'Coffee',subscription:'Subscriptions',cash:'Cash',pockets:'Savings'};
+  return `<div class="distribution"><div class="distribution-track" aria-hidden="true"><span style="flex:${leading.value};background:${leading.color}"></span>${other?`<span style="flex:${other};background:#bcbcbc"></span>`:''}</div><div class="distribution-legend"><span><i style="background:${leading.color}"></i>${label[leading.id]||'Other'}</span>${other?`<span><i style="background:#bcbcbc"></i>${otherLabel}</span>`:''}</div></div>`;
 }
+function analytics() {
+  const currency=state.currency,stats=dashboardMetrics(state,{period:analyticsPeriod,currency,timeZone:currentRegion().tz,rates:RATES});
+  const monthly=monthMetrics(state,nowDay().slice(0,7)),pct=Math.min(100,monthly.expense/state.budget*100);
+  let daily=stats.daily.length?stats.daily:Array.from({length:7},(_,i)=>({key:String(i),income:0,expense:0}));
+  if(daily.length>7){const groups=Array.from({length:7},()=>({key:'',income:0,expense:0}));daily.forEach((day,i)=>{const group=groups[Math.floor(i*7/daily.length)];group.key=group.key?group.key.split(' – ')[0]+' – '+day.key:day.key;group.income+=day.income;group.expense+=day.expense;});daily=groups;}
+  const maxIncome=Math.max(...daily.map(d=>d.income),1),maxFlow=Math.max(stats.income,stats.spent,1);
+  return `<header class="detail-toolbar"><button class="icon-button" data-act="back-main" aria-label="Fermer les analyses">${icon('close')}</button></header><h1 class="analytics-title">Analytics</h1><span class="sr-only">Votre argent</span>
+  <div class="analytics-scope"><button data-act="accounts">Personal ${icon('down')}</button><button data-act="analytics-period">${stats.range.caption}</button></div>
+  <button class="insight-card spent-card" data-act="expenses" data-period="${analyticsPeriod}" aria-label="Explorer les dépenses"><span class="insight-label">Spent</span><strong>${esc(roundedMoney(stats.spent,currency))}</strong>${state.hideBalance?'<span class="insight-hidden">Montants masqués</span>':distribution(stats.categories)}<span class="sr-only">Explorer les dépenses</span></button>
+  <div class="insight-grid"><button class="insight-card income-card" data-act="income-history"><span class="insight-label">Income</span><strong>${esc(roundedMoney(stats.income,currency))}</strong><span class="insight-change ${stats.incomeChange<0?'negative':'positive'}">${stats.incomeChange<0?'▾':'▴'} ${esc(roundedMoney(Math.abs(stats.incomeChange),currency))}</span>${state.hideBalance?'':`<div class="income-bars" aria-label="Entrées par période">${daily.map(d=>`<span class="${d.income?'has-income':''}" style="--bar-height:${Math.max(6,Math.round(d.income/maxIncome*100))}%" title="${esc(d.key)} : ${esc(money(d.income,currency))}"></span>`).join('')}</div>`}</button>
+  <button class="insight-card cashflow-card" data-act="cashflow-history"><span class="insight-label">Net cashflow</span><strong>${esc(roundedMoney(stats.net,currency))}</strong><span class="insight-change ${stats.net<0?'negative':'positive'}">${stats.net<0?'⊖ Negative':'⊕ Positive'}</span>${state.hideBalance?'':`<div class="cashflow-bars" aria-label="Entrées et dépenses"><div><span style="width:${stats.income/maxFlow*100}%"></span></div><div><span style="width:${stats.spent/maxFlow*100}%"></span></div></div>`}</button></div>
+  <div class="analytics-dots" aria-hidden="true"><i></i><i></i><i class="is-active"></i></div><h2 class="overview-title">Overview</h2>
+  <button class="insight-card assets-card" data-act="assets"><span class="insight-label">Total assets</span><strong>${esc(roundedMoney(stats.assets,currency))}</strong>${state.hideBalance?'<span class="insight-hidden">Montants masqués</span>':distribution([{id:'cash',value:stats.cash,color:'#6498ff'},{id:'pockets',value:stats.pockets,color:'#ba54ec'}],'Savings')}</button>
+  <div class="panel analytics-budget"><div class="chart-header"><span>Monthly budget · EUR</span><button data-act="budget">Manage</button></div><strong>${esc(money(Math.max(0,state.budget-monthly.expense)))}</strong><p>${monthly.expense>state.budget?'Budget dépassé':'Remaining this month'}</p><div class="budget-track"><span style="width:${pct}%"></span></div><div class="budget-figures"><span>${esc(money(monthly.expense))} spent</span><span>${esc(money(state.budget))}</span></div></div><button class="outline-button" data-act="export">${icon('download')}Exporter les données</button><p class="demo-footnote">Le change et les mouvements d’épargne sont exclus des dépenses.</p>`;
+}
+function invest() {
+  return `${topbar(true)}<section class="invest-hero"><p>Capital at risk</p><div class="invest-balance"><h1>${esc(roundedMoney(preview.cash,'USD'))}</h1><button data-act="invest-info" aria-label="À propos du portefeuille">${icon('info')}</button></div><span>${esc(roundedMoney(0,'USD'))} <span>0,00 %</span></span></section>
+  <div class="quick-actions">${[['invest-market','trend','Trade'],['invest-deposit','plus','Add money'],['invest-withdraw','arrowDown','Withdraw'],['invest-more','more','More']].map(([act,i,label])=>`<button class="quick-action" data-act="${act}"><span class="quick-icon">${icon(i)}</span><span>${label}</span></button>`).join('')}</div>${promo(true)}
+  <section class="brokerage"><button class="brokerage-heading" data-act="brokerage-toggle" aria-expanded="${brokerageExpanded}"><span class="brokerage-icon">${icon('trend')}</span><span><strong>Brokerage account</strong><small>${esc(roundedMoney(preview.cash,'USD'))}</small></span>${icon(brokerageExpanded?'down':'chevron',brokerageExpanded?'rotated':'')}</button>${brokerageExpanded?`<button class="brokerage-cash" data-act="invest-deposit"><span class="brokerage-icon">${icon('cash')}</span><strong>Cash balance</strong><span>${esc(roundedMoney(preview.cash,'USD'))}</span></button>`:''}</section>
+  ${preview.watchlist.length?`<div class="section-title"><h2>Watchlist</h2><button data-act="invest-market">Manage</button></div><div class="transactions">${preview.watchlist.map(id=>instrumentRow(id)).join('')}</div>`:''}<p class="demo-footnote">Portefeuille de démonstration. Aucune cotation ni opération de marché réelle.</p>`;
+}
+const instruments=[{id:'global',name:'Global Equity',symbol:'EQTY',description:'Panier d’actions illustratif',icon:'globe'},{id:'tech',name:'Technology',symbol:'TECH',description:'Actions technologiques illustratives',icon:'spark'},{id:'bonds',name:'Short-term bonds',symbol:'BOND',description:'Obligations illustratives',icon:'shield'},{id:'bitcoin',name:'Bitcoin',symbol:'BTC',description:'Actif numérique',icon:'bitcoin'},{id:'ethereum',name:'Ethereum',symbol:'ETH',description:'Actif numérique',icon:'spark'}];
+function instrumentRow(id) {
+  const item=instruments.find(i=>i.id===id);if(!item)return '';
+  return `<button class="tx-row" data-act="instrument" data-id="${id}"><span class="tx-icon" style="background:var(--soft)">${icon(item.icon)}</span><span class="tx-body"><span class="tx-name">${item.name}</span><span class="tx-sub" style="display:block">${item.symbol} · Illustration</span></span>${icon('chevron')}</button>`;
+}
+function credit() {
+  return `${topbar()}<h1 class="page-heading explorer-heading">Credit</h1><div class="explorer-hero"><span class="explorer-emblem">${icon('coins')}</span><h2>A plan that fits</h2><p>Explorez une mensualité dans ce calculateur de démonstration.</p></div><div class="panel"><form id="credit-form"><div class="form-field"><label for="credit-amount">Montant en euros</label><input id="credit-amount" name="amount" inputmode="decimal" value="5000" required></div><div class="field-pair"><div class="form-field"><label for="credit-months">Durée (mois)</label><select id="credit-months" name="months"><option>12</option><option selected>24</option><option>36</option><option>48</option></select></div><div class="form-field"><label for="credit-rate">Taux annuel illustratif (%)</label><input id="credit-rate" name="rate" inputmode="decimal" value="5" required></div></div><button class="primary-button">Calculer</button>${errorHTML()}</form><div id="credit-result" class="credit-result" role="status"></div></div><p class="demo-footnote">Calcul indicatif, hors frais. Aucun crédit proposé ni accordé.</p>`;
+}
+function cryptoView() {
+  return `${topbar(true)}<section class="crypto-hero"><p>Crypto</p><h1>${esc(roundedMoney(0))}</h1><span>No holdings</span></section><div class="quick-actions">${[['crypto-market','search','Explore'],['invest-market','plus','Watchlist'],['expenses','chart','Activity'],['invest-info','more','More']].map(([act,i,l])=>`<button class="quick-action" data-act="${act}"><span class="quick-icon">${icon(i)}</span><span>${l}</span></button>`).join('')}</div><div class="reference-promo crypto-promo"><button class="promo-content" data-act="crypto-market"><strong>Explore digital assets</strong><span>Build a watchlist, at your own pace.</span><img src="./promo-assets.svg?v=1" alt="" width="150" height="110"></button></div><div class="section-title"><h2>Discover</h2></div><div class="transactions">${['bitcoin','ethereum'].map(instrumentRow).join('')}</div><p class="demo-footnote">Exploration de démonstration, sans prix ni achat réel.</p>`;
+}
+function points() {
+  const metrics=expenseMetrics(state.transactions,{period:'all',timeZone:currentRegion().tz});
+  const points=Math.floor(metrics.total/100);
+  return `${topbar()}<section class="points-hero"><span class="points-symbol">${icon('rewards')}</span><p>FlexPoints</p><h1>${state.hideBalance?'••••':new Intl.NumberFormat('fr-FR').format(points)}</h1><span>Illustrative points</span></section><div class="panel"><h2>Your everyday activity</h2><p class="sheet-sub" style="margin-top:12px">Un point fictif par euro de dépenses de l’historique EUR. Ces points n’ont aucune valeur et ne peuvent pas être échangés.</p><button class="primary-button" data-act="expenses" data-period="all">Voir les dépenses</button></div><button class="outline-button" data-act="savings-open">${icon('pocket')}Vos projets d’épargne</button>`;
+}
+
 function expenses() {
-  const metrics=expenseMetrics(state.transactions,{period:expensesPeriod,anchor:expensesAnchor,timeZone:currentRegion().tz});
+  const metrics=expenseMetrics(state.transactions,{period:expensesPeriod,anchor:expensesAnchor,currency:state.currency,timeZone:currentRegion().tz});
   const transactions=expensesCategory?metrics.transactions.filter(t=>t.category===expensesCategory):metrics.transactions;
   const label=expensesCategory?(CATEGORY_META[expensesCategory]?.label||'Autres'):'Toutes les dépenses';
   return `${renderExpenseSummary(metrics,{mode:expensesMode,category:expensesCategory,hidden:state.hideBalance,money,icon,metadata:CATEGORY_META})}
     <div class="expenses-section-heading" id="expenses-transactions"><h2>${esc(label)}</h2>${expensesCategory?'<button class="expenses-clear" data-act="expenses-category" data-id="">Tout voir</button>':`<span>${transactions.length} opération${transactions.length>1?'s':''}</span>`}</div>
     ${transactions.length?txGroups(transactions.slice(0,expensesLimit)):'<div class="expenses-empty">Aucune opération à afficher.</div>'}
     ${transactions.length>expensesLimit?'<button class="expenses-more" data-act="expenses-more">Afficher plus d’opérations</button>':''}
-    <p class="expenses-note">Dépenses du compte EUR. Les opérations refusées,<br>le change et les mouvements d’épargne sont exclus.</p>`;
+    <p class="expenses-note">Dépenses du compte ${state.currency}. Les opérations refusées,<br>le change et les mouvements d’épargne sont exclus.</p>`;
 }
 function allTransactions() {
   let txs=ordered().filter(t=>t.currency===state.currency);
@@ -200,15 +266,15 @@ function allTransactions() {
 }
 function lockHTML() {
   const cooldown=blockedUntil>Date.now();
-  return `<section class="lock-screen"><div class="lock-top"><span class="lock-brand">luma</span></div><div class="lock-center"><div class="lock-avatar">LJ</div><h1>Bonjour, Lucas.</h1><p>Votre espace personnel vous attend.<br>Saisissez votre code à 4 chiffres.</p><div class="pin-dots" aria-label="${pin.length} chiffres saisis">${[0,1,2,3].map(i=>`<span class="pin-dot ${i<pin.length?'filled':''}"></span>`).join('')}</div><div id="pin-error" class="pin-error" role="status">${cooldown?'Réessayez dans '+Math.ceil((blockedUntil-Date.now())/1000)+' s':''}</div></div><div class="keypad">${[['1',''],['2','ABC'],['3','DEF'],['4','GHI'],['5','JKL'],['6','MNO'],['7','PQRS'],['8','TUV'],['9','WXYZ']].map(([n,l])=>`<button class="key" data-act="pin" data-id="${n}" aria-label="${n}" ${cooldown?'disabled':''}>${n}<small>${l}</small></button>`).join('')}<button class="key subtle" data-act="pin-help">Aide</button><button class="key" data-act="pin" data-id="0" aria-label="0" ${cooldown?'disabled':''}>0</button><button class="key subtle" data-act="pin-delete" aria-label="Effacer le dernier chiffre">${icon('backspace')}</button></div></section>`;
+  return `<section class="lock-screen"><div class="lock-top"><span class="lock-brand">flex</span></div><div class="lock-center"><div class="lock-avatar">LJ</div><h1>Bonjour, Lucas.</h1><p>Votre espace personnel vous attend.<br>Saisissez votre code à 4 chiffres.</p><div class="pin-dots" aria-label="${pin.length} chiffres saisis">${[0,1,2,3].map(i=>`<span class="pin-dot ${i<pin.length?'filled':''}"></span>`).join('')}</div><div id="pin-error" class="pin-error" role="status">${cooldown?'Réessayez dans '+Math.ceil((blockedUntil-Date.now())/1000)+' s':''}</div></div><div class="keypad">${[['1',''],['2','ABC'],['3','DEF'],['4','GHI'],['5','JKL'],['6','MNO'],['7','PQRS'],['8','TUV'],['9','WXYZ']].map(([n,l])=>`<button class="key" data-act="pin" data-id="${n}" aria-label="${n}" ${cooldown?'disabled':''}>${n}<small>${l}</small></button>`).join('')}<button class="key subtle" data-act="pin-help">Aide</button><button class="key" data-act="pin" data-id="0" aria-label="0" ${cooldown?'disabled':''}>0</button><button class="key subtle" data-act="pin-delete" aria-label="Effacer le dernier chiffre">${icon('backspace')}</button></div></section>`;
 }
 function render() {
   theme();
   const disclosure=state.scenario?'<p class="scenario-disclosure">Scénario de démonstration · montants et opérations fictifs</p>':'';
   if(!unlocked){root.innerHTML=lockHTML()+(state.scenario?'<p class="scenario-disclosure scenario-locked-disclosure">Scénario de démonstration · aucun compte réel</p>':'');return;}
-  const content=view==='expenses'?expenses():view==='transactions'?allTransactions():({home,cards,payments,savings,analytics}[tab]||home)();
+  const content=view==='expenses'?expenses():view==='transactions'?allTransactions():({home,cards,payments,savings,analytics,invest,credit,crypto:cryptoView,points}[tab]||home)();
   const editorBanner=editMode?'<div class="editor-banner"><span>Mode édition · Démonstration</span><div class="editor-banner-actions"><button data-act="editor">Régler le scénario</button><button class="editor-exit-button" data-act="editor-exit" aria-label="Quitter le mode édition">×</button></div></div>':disclosure;
-  root.innerHTML=`<section class="screen ${view==='main'?tab:view}-screen">${editorBanner}${content}${!storageAvailable?'<div class="info-box neutral">Les données ne peuvent pas être sauvegardées dans ce navigateur.</div>':''}</section>${nav()}`;
+  root.innerHTML=`<section class="screen ${view==='main'?tab:view}-screen">${editMode?editorBanner:''}${content}${editMode?'':disclosure}${!storageAvailable?'<div class="info-box neutral">Les données ne peuvent pas être sauvegardées dans ce navigateur.</div>':''}</section>${view==='main'&&tab!=='analytics'?nav():''}`;
 }
 function openSheet(title,content) {
   previousFocus=document.activeElement;
@@ -249,11 +315,12 @@ function transactionSheet(id) {
   const t=state.transactions.find(t=>t.id===id);if(!t)return;
   const c=categoryMeta(t),amount=t.status==='declined'?t.attemptedAmount:t.amount;
   const stamp=new Intl.DateTimeFormat('fr-FR',{timeZone:regionById(t.region).tz,dateStyle:'long',timeStyle:'short'}).format(new Date(t.timestamp));
-  openSheet('Détails de la transaction',`<div class="detail-hero"><div class="tx-icon" style="background:${c.color}17;color:${c.color}">${icon(c.icon)}</div><p>${esc(t.name)}</p><h3 class="${amount>0?'positive':''}">${amount>0?'+':''}${esc(money(amount,t.currency))}</h3><p>${t.status==='declined'?'Paiement refusé':'Transaction · Terminée'}</p></div>${t.demo?'<p class="editor-demo-transaction">Opération générée · Démonstration</p>':''}<div class="details-list">${detailsRow('Date',stamp)}${detailsRow('Lieu',t.city||'En ligne')}${detailsRow('Catégorie',c.label)}${detailsRow('Méthode',t.method||'—')}${t.originalAmount&&t.originalCurrency!==t.currency?detailsRow('Montant local',state.hideBalance?'••••':formatMoney(t.originalAmount,t.originalCurrency)):''}${detailsRow('Solde après opération',money(t.balanceAfter,t.currency))}${t.note?detailsRow('Message',t.note):''}${detailsRow('Référence','LUMA-'+t.id.slice(-12).toUpperCase())}</div><button class="primary-button" data-act="close-sheet">Fermer</button>`);
+  openSheet('Détails de la transaction',`<div class="detail-hero"><div class="tx-icon" style="background:${c.color}17;color:${c.color}">${icon(c.icon)}</div><p>${esc(t.name)}</p><h3 class="${amount>0?'positive':''}">${amount>0?'+':''}${esc(money(amount,t.currency))}</h3><p>${t.status==='declined'?'Paiement refusé':'Transaction · Terminée'}</p></div>${t.demo?'<p class="editor-demo-transaction">Opération générée · Démonstration</p>':''}<div class="details-list">${detailsRow('Date',stamp)}${detailsRow('Lieu',t.city||'En ligne')}${detailsRow('Catégorie',c.label)}${detailsRow('Méthode',t.method||'—')}${t.originalAmount&&t.originalCurrency!==t.currency?detailsRow('Montant local',state.hideBalance?'••••':formatMoney(t.originalAmount,t.originalCurrency)):''}${detailsRow('Solde après opération',money(t.balanceAfter,t.currency))}${t.note?detailsRow('Message',t.note):''}${detailsRow('Référence','FLEX-'+t.id.slice(-12).toUpperCase())}</div><button class="primary-button" data-act="close-sheet">Fermer</button>`);
 }
 function accountDetailsSheet() {
-  openSheet('Coordonnées',`<p class="sheet-sub">Votre référence de compte.</p><div class="details-list">${detailsRow('Titulaire','Lucas Jouvençon')}${detailsRow('Compte',state.currency)}${detailsRow('Référence','LUMA-'+state.currency+'-0428')}${detailsRow('Établissement','Luma')}</div><button class="primary-button" data-act="copy-account">${icon('copy')}Copier la référence</button>`);
+  openSheet('Coordonnées',`<p class="sheet-sub">Références de test non utilisables pour un virement.</p><div class="details-list">${detailsRow('Titulaire','Lucas Jouvençon')}${detailsRow('Compte',state.currency+' · Flex démo')}${detailsRow('Référence','TEST-FLEX-'+state.currency+'-0428')}${detailsRow('Établissement','Flex')}</div><div class="info-box neutral">Aucun IBAN ni compte bancaire réel. Ces informations ne permettent pas de recevoir un virement.</div><button class="primary-button" data-act="copy-account">${icon('copy')}Copier la référence</button>`);
 }
+
 function profileSheet() {
   openSheet('Votre espace',`<div class="profile-button" style="margin:0 0 20px"><span class="avatar" style="width:57px;height:57px;border-radius:20px">LJ</span><span><span style="display:block;font-size:17px;font-weight:600">Lucas Jouvençon</span><span class="profile-caption" style="display:block">@lucas.j · Plus</span></span></div><div class="panel">
   ${toggleRow('Mode sombre','Adaptez l’interface à votre préférence','theme',state.theme==='dark','moon')}
@@ -279,7 +346,7 @@ function captureEditorUndo() {
   return SCENARIO_FIELDS.map(key=>({key,present:Object.hasOwn(state,key),value:state[key]===undefined?undefined:JSON.parse(JSON.stringify(state[key]))}));
 }
 function locationSheet() {
-  openSheet('Votre localisation',`<p class="sheet-sub">La région détermine les nouveaux libellés de commerces, la devise locale et les horaires. Les anciens paiements conservent leur lieu.</p><button class="primary-button" data-act="geolocate">${icon('location')}Utiliser ma position</button><p style="font-size:11px;color:var(--sub);margin:22px 0 12px">OU CHOISIR UNE VILLE</p><div class="transactions">${REGIONS.map(r=>`<button class="tx-row" data-act="select-location" data-id="${r.id}"><span style="font-size:24px;width:33px">${r.flag}</span><span class="tx-body"><span class="tx-name" style="display:block">${r.city}</span><span class="tx-sub" style="display:block">${r.country} · ${r.currency}</span></span>${currentRegion().id===r.id?icon('check'):icon('chevron')}</button>`).join('')}</div><p class="demo-footnote">La position sert uniquement à choisir une région.<br>Les coordonnées exactes ne sont ni stockées ni envoyées par Luma.</p>`);
+  openSheet('Votre localisation',`<p class="sheet-sub">La région détermine les nouveaux libellés de commerces, la devise locale et les horaires. Les anciens paiements conservent leur lieu.</p><button class="primary-button" data-act="geolocate">${icon('location')}Utiliser ma position</button><p style="font-size:11px;color:var(--sub);margin:22px 0 12px">OU CHOISIR UNE VILLE</p><div class="transactions">${REGIONS.map(r=>`<button class="tx-row" data-act="select-location" data-id="${r.id}"><span style="font-size:24px;width:33px">${r.flag}</span><span class="tx-body"><span class="tx-name" style="display:block">${r.city}</span><span class="tx-sub" style="display:block">${r.country} · ${r.currency}</span></span>${currentRegion().id===r.id?icon('check'):icon('chevron')}</button>`).join('')}</div><p class="demo-footnote">La position sert uniquement à choisir une région.<br>Les coordonnées exactes ne sont ni stockées ni envoyées par Flex.</p>`);
 }
 function cardDetailsSheet() {
   openSheet('Votre carte virtuelle',`<div class="details-list">${detailsRow('Titulaire','Lucas Jouvençon')}${detailsRow('Numéro',showCard?'0000 0000 0428':'•••• •••• 0428')}${detailsRow('Expiration','09/29')}${detailsRow('Code de sécurité','•••')}${detailsRow('État',state.cards.frozen?'Gelée':'Active')}</div><div class="info-box neutral">Carte virtuelle de votre compte.</div><button class="primary-button" data-act="reveal-card">${icon(showCard?'eyeOff':'eye')}${showCard?'Masquer les détails':'Afficher les détails'}</button>`);
@@ -330,10 +397,10 @@ async function copy(text,message='Copié') {
 }
 function exportCSV() {
   const cell=v=>'"'+String(v??'').replace(/^[=+@-]/,"'").replace(/"/g,'""')+'"';
-  const rows=[['TYPE','DATE','LIBELLE','MONTANT','DEVISE','VILLE','CATEGORIE','STATUT'],...ordered().map(t=>[state.scenario||t.demo?'DEMO':'LUMA',t.timestamp,t.name,(t.amount/100).toFixed(2),t.currency,t.city,categoryMeta(t).label,t.status])];
+  const rows=[['TYPE','DATE','LIBELLE','MONTANT','DEVISE','VILLE','CATEGORIE','STATUT'],...ordered().map(t=>['DEMO - DONNEES FICTIVES',t.timestamp,t.name,(t.amount/100).toFixed(2),t.currency,t.city,categoryMeta(t).label,t.status])];
   const csv='\uFEFF'+rows.map(row=>row.map(cell).join(';')).join('\r\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
-  a.href=url;a.download='Luma-transactions-'+nowDay()+'.csv';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);
+  a.href=url;a.download='Flex-DEMO-transactions-'+nowDay()+'.csv';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);
   toast('Export préparé.');
 }
 function lock() {unlocked=false;pin='';showCard=false;editMode=false;editorDraft=null;editorUndo=null;editorNotice='';closeSheet();render();window.scrollTo({top:0});}
@@ -373,10 +440,32 @@ function limitSheet() {
   openSheet('Plafond quotidien',`<p class="sheet-sub">Les nouveaux paiements automatiques par carte respectent ce plafond.</p><form id="limit-form"><p id="limit-value" class="range-value">${esc(formatMoney(state.cards.dailyLimit))}</p><input type="range" id="limit" name="limit" min="0" max="2000" step="25" value="${state.cards.dailyLimit/100}" aria-label="Plafond quotidien en euros"><div class="budget-figures"><span>0 €</span><span>2 000 €</span></div>${errorHTML()}<button class="primary-button" type="submit">Enregistrer la limite</button></form>`);
 }
 function installSheet() {
-  openSheet('Luma sur votre iPhone',`<div class="panel"><div class="setting-row"><span class="avatar">1</span><div><p class="setting-name">Ouvrez le lien dans Safari</p><p class="setting-description">Connectez-vous à votre compte ChatGPT si demandé.</p></div></div><div class="setting-row"><span class="avatar">2</span><div><p class="setting-name">Touchez le bouton Partager</p><p class="setting-description">L’icône avec une flèche vers le haut.</p></div></div><div class="setting-row"><span class="avatar">3</span><div><p class="setting-name">Sur l’écran d’accueil</p><p class="setting-description">Puis touchez Ajouter. Luma s’ouvrira en plein écran.</p></div></div></div><div class="info-box neutral">Le code choisi reste nécessaire à chaque ouverture. Les données sont sauvegardées sur cet appareil et ne se synchronisent pas entre navigateurs.</div><button class="primary-button" data-act="close-sheet">Compris</button>`);
+  openSheet('Flex sur votre iPhone',`<div class="panel"><div class="setting-row"><span class="avatar">1</span><div><p class="setting-name">Ouvrez le lien dans Safari</p><p class="setting-description">Connectez-vous à votre compte ChatGPT si demandé.</p></div></div><div class="setting-row"><span class="avatar">2</span><div><p class="setting-name">Touchez le bouton Partager</p><p class="setting-description">L’icône avec une flèche vers le haut.</p></div></div><div class="setting-row"><span class="avatar">3</span><div><p class="setting-name">Sur l’écran d’accueil</p><p class="setting-description">Puis touchez Ajouter. Flex s’ouvrira en plein écran.</p></div></div></div><div class="info-box neutral">Le code choisi reste nécessaire à chaque ouverture. Les données sont sauvegardées sur cet appareil et ne se synchronisent pas entre navigateurs.</div><button class="primary-button" data-act="close-sheet">Compris</button>`);
+}
+function menuSheet(title,items) {
+  openSheet(title,`<div class="transactions">${items.map(([act,i,label,id])=>`<button class="tx-row" data-act="${act}" ${id?`data-id="${id}"`:''}><span class="tx-icon" style="background:var(--soft);color:var(--ink)">${icon(i)}</span><span class="tx-body"><span class="tx-name">${label}</span></span>${icon('chevron')}</button>`).join('')}</div>`);
 }
 function moreSheet() {
-  openSheet('Tout votre espace',`<div class="transactions">${[['request','arrowDown','Demander un paiement'],['account-details','info','Coordonnées'],['location','location','Choisir la localisation'],['install','plus','Installer sur l’iPhone'],['profile','settings','Réglages et profil']].map(([act,i,l])=>`<button class="tx-row" data-act="${act}"><span class="tx-icon" style="background:var(--soft);color:var(--sub)">${icon(i)}</span><span class="tx-body"><span class="tx-name">${l}</span></span>${icon('chevron')}</button>`).join('')}</div>`);
+  menuSheet('Tout votre espace', [['tab','cards','Vos cartes','cards'],['tab','pocket','Vos poches','savings'],['request','arrowDown','Demander un paiement'],['account-details','building','Coordonnées'],['location','location','Choisir la localisation'],['install','plus','Installer sur l’iPhone'],['profile','settings','Réglages et profil']]);
+}
+function marketSheet(cryptoOnly=false) {
+  const items=cryptoOnly?instruments.filter(i=>['bitcoin','ethereum'].includes(i.id)):instruments;
+  openSheet(cryptoOnly?'Crypto · Explorer':'Invest · Explorer',`<p class="sheet-sub">Catalogue de démonstration. Les instruments sont illustratifs, sans cotations ni passage d’ordre réel.</p><div class="transactions">${items.map(i=>instrumentRow(i.id)).join('')}</div>`);
+}
+function instrumentSheet(id) {
+  const item=instruments.find(i=>i.id===id);if(!item)return;
+  const watching=preview.watchlist.includes(id);
+  openSheet(item.name,`<div class="explorer-hero compact"><span class="explorer-emblem">${icon(item.icon)}</span><h3>${item.symbol}</h3><p>${esc(item.description)}</p></div><div class="info-box neutral">Instrument de démonstration. Aucun prix de marché ni ordre réel. Votre liste de suivi reste enregistrée sur cet appareil.</div><button class="primary-button" data-act="watchlist-toggle" data-id="${id}" aria-pressed="${watching}">${icon(watching?'check':'plus')}${watching?'Retirer de la liste':'Ajouter à la liste de suivi'}</button>`);
+}
+function investCashSheet(withdraw=false) {
+  openSheet(withdraw?'Withdraw · Démonstration':'Add money · Démonstration',`<p class="sheet-sub">Réglez la trésorerie fictive du portefeuille. Le solde des comptes et le registre bancaire ne sont pas modifiés.</p><p class="range-value">${esc(money(preview.cash,'USD'))}</p><form id="invest-cash-form" data-withdraw="${withdraw}"><div class="form-field"><label for="invest-amount">Montant fictif · USD</label><input id="invest-amount" name="amount" inputmode="decimal" placeholder="0,00" maxlength="13" required></div>${errorHTML()}<button class="primary-button">${withdraw?'Retirer le montant fictif':'Ajouter le montant fictif'}</button></form>`);
+}
+function analyticsPeriodSheet() {
+  openSheet('Période des analyses',`<div class="transactions">${[['week','This week'],['month','This month'],['halfyear','Last 6 months'],['year','This year']].map(([id,label])=>`<button class="tx-row" data-act="analytics-select-period" data-id="${id}"><span class="tx-body"><span class="tx-name">${label}</span></span>${icon(analyticsPeriod===id?'check':'chevron')}</button>`).join('')}</div>`);
+}
+function expensePeriodSheet() {
+  const metrics=expenseMetrics(state.transactions,{period:expensesPeriod,anchor:expensesAnchor,currency:state.currency,timeZone:currentRegion().tz});
+  openSheet('Période des dépenses',`<div class="expenses-period-nav"><button data-act="expenses-shift" data-id="-1" aria-label="Période précédente" ${expensesPeriod==='all'?'disabled':''}>${icon('back')}</button><span>${esc(metrics.rangeLabel)}</span><button data-act="expenses-shift" data-id="1" aria-label="Période suivante" ${metrics.canNext?'':'disabled'}>${icon('chevron')}</button></div><button class="primary-button" data-act="expenses-period" data-id="all">Tout l’historique</button>`);
 }
 document.addEventListener('click',async event=>{
   lastActive=Date.now();
@@ -393,21 +482,39 @@ document.addEventListener('click',async event=>{
   try{
     switch(act){
       case'tab':tab=id;view='main';closeSheet();render();window.scrollTo({top:0});break;
-      case'expenses':view='expenses';expensesPeriod=b.dataset.period==='month'?'month':'year';expensesAnchor=expensesPeriod==='month'?nowDay().slice(0,7):activeMonth.slice(0,4);expensesMode='donut';expensesCategory='';expensesLimit=20;closeSheet();render();window.scrollTo({top:0});break;
-      case'expenses-back':view='main';tab='analytics';render();window.scrollTo({top:0});break;
+      case'expenses':view='expenses';expensesPeriod=['week','month','halfyear','year','all'].includes(b.dataset.period)?b.dataset.period:'year';expensesAnchor=periodRange({period:expensesPeriod,timeZone:currentRegion().tz}).anchor;expensesMode='donut';expensesCategory='';expensesLimit=20;closeSheet();render();window.scrollTo({top:0});break;
+      case'expenses-back':closeSheet();view='main';tab='analytics';render();window.scrollTo({top:0});break;
       case'expenses-mode':if(['line','bars','donut'].includes(id)){expensesMode=id;render();}break;
       case'expenses-period':{
-        if(!['month','year','all'].includes(id))break;
-        const year=expensesAnchor.slice(0,4)||activeMonth.slice(0,4);
-        expensesAnchor=id==='year'?year:id==='month'?(expensesAnchor.length===7?expensesAnchor:year+'-'+activeMonth.slice(5)):'';
-        expensesPeriod=id;expensesCategory='';expensesLimit=20;render();break;
+        if(!['week','month','halfyear','year','all'].includes(id))break;
+        expensesPeriod=id;expensesAnchor=periodRange({period:id,timeZone:currentRegion().tz}).anchor;expensesCategory='';expensesLimit=20;closeSheet();render();break;
       }
       case'expenses-shift':{
-        const delta=Number(id),metrics=expenseMetrics(state.transactions,{period:expensesPeriod,anchor:expensesAnchor,timeZone:currentRegion().tz});
-        if(expensesPeriod!=='all'&&(delta===-1||(delta===1&&metrics.canNext))){expensesAnchor=shiftExpensePeriod(metrics.anchor,expensesPeriod,delta);expensesCategory='';expensesLimit=20;render();}break;
+        const delta=Number(id),metrics=expenseMetrics(state.transactions,{period:expensesPeriod,anchor:expensesAnchor,currency:state.currency,timeZone:currentRegion().tz});
+        if(expensesPeriod!=='all'&&(delta===-1||(delta===1&&metrics.canNext))){expensesAnchor=shiftExpensePeriod(metrics.anchor,expensesPeriod,delta);expensesCategory='';expensesLimit=20;render();expensePeriodSheet();}break;
       }
-      case'expenses-category':expensesCategory=expensesCategory===id?'':id;expensesLimit=20;render();document.getElementById('expenses-transactions')?.scrollIntoView({block:'start',behavior:'smooth'});break;
+      case'expenses-category':closeSheet();expensesCategory=expensesCategory===id?'':id;expensesLimit=20;render();document.getElementById('expenses-transactions')?.scrollIntoView({block:'start',behavior:'smooth'});break;
       case'expenses-more':expensesLimit+=20;render();break;
+      case'promo-slide':if([0,1,2].includes(Number(id))){promoIndex=Number(id);render();}break;
+      case'promo-dismiss':promoDismissed=true;render();break;
+      case'move':menuSheet('Move',[['send','arrowUp','Envoyer'],['exchange','exchange','Changer de devise'],['tab','pocket','Vers une poche','savings']]);break;
+      case'savings-open':tab='savings';view='main';closeSheet();render();window.scrollTo({top:0});break;
+      case'analytics-period':analyticsPeriodSheet();break;
+      case'analytics-select-period':if(['week','month','halfyear','year'].includes(id)){analyticsPeriod=id;closeSheet();render();}break;
+      case'income-history':view='transactions';filter='in';search='';render();window.scrollTo({top:0});break;
+      case'cashflow-history':view='transactions';filter='all';search='';render();window.scrollTo({top:0});break;
+      case'assets':menuSheet('Total assets',[['accounts','cash','Vos comptes'],['tab','pocket','Vos poches','savings']]);break;
+      case'expenses-period-menu':expensePeriodSheet();break;
+      case'expenses-grouping':menuSheet('By Category',[['expenses-category','chart','Toutes les dépenses']]);break;
+      case'brokerage-toggle':brokerageExpanded=!brokerageExpanded;render();break;
+      case'invest-search':case'invest-market':marketSheet();break;
+      case'crypto-market':marketSheet(true);break;
+      case'instrument':instrumentSheet(id);break;
+      case'watchlist-toggle':if(instruments.some(i=>i.id===id)){preview.watchlist=preview.watchlist.includes(id)?preview.watchlist.filter(x=>x!==id):[...preview.watchlist,id];savePreview();render();instrumentSheet(id);}break;
+      case'invest-deposit':investCashSheet();break;
+      case'invest-withdraw':investCashSheet(true);break;
+      case'invest-more':menuSheet('Invest',[['invest-market','search','Explorer les instruments'],['invest-info','info','À propos du portefeuille']]);break;
+      case'invest-info':openSheet('Portefeuille de démonstration',`<p class="sheet-sub">Cette vue reproduit un parcours de portefeuille. La trésorerie est fictive et indépendante de vos comptes. Aucun cours réel, ordre, rendement ou compte de courtage n’est créé.</p><button class="primary-button" data-act="invest-market">Explorer les instruments</button>`);break;
       case'accounts':accountSheet();break;
       case'select-account':state.currency=id;persist();closeSheet();render();break;
       case'hide':state.hideBalance=!state.hideBalance;persist();render();break;
@@ -436,9 +543,9 @@ document.addEventListener('click',async event=>{
       case'request':requestSheet();break;
       case'more':moreSheet();break;
       case'account-details':accountDetailsSheet();break;
-      case'copy-account':await copy('Lucas Jouvençon — LUMA-'+state.currency+'-0428','Référence copiée.');break;
+      case'copy-account':await copy('DEMO — Lucas Jouvençon — TEST-FLEX-'+state.currency+'-0428 — Identifiant fictif, aucun IBAN.','Référence copiée.');break;
       case'all-transactions':case'search':view='transactions';search='';filter='all';closeSheet();render();window.scrollTo({top:0});if(act==='search')document.getElementById('tx-search')?.focus();break;
-      case'back-main':view='main';tab='home';render();break;
+      case'back-main':view='main';tab='home';closeSheet();render();window.scrollTo({top:0});break;
       case'filter':filter=id;render();break;
       case'transaction':transactionSheet(id);break;
       case'notifications':notificationsSheet();break;
@@ -474,8 +581,8 @@ document.addEventListener('click',async event=>{
       }
       case'share-request':{
         const r=state.requests.find(r=>r.id===id);if(!r)break;
-        const text=(state.scenario?'DÉMONSTRATION — ':'')+'LUMA — Demande de paiement à '+r.name+' : '+formatMoney(r.cents,r.currency)+'.';
-        if(navigator.share){try{await navigator.share({title:'Luma — demande',text});}catch(e){if(e.name!=='AbortError')await copy(text,'Texte copié.');}}
+        const text='DÉMO FLEX — Demande fictive à '+r.name+' : '+formatMoney(r.cents,r.currency)+'. Aucun paiement réel n’est demandé.';
+        if(navigator.share){try{await navigator.share({title:'Flex — demande',text});}catch(e){if(e.name!=='AbortError')await copy(text,'Texte copié.');}}
         else await copy(text,'Texte copié.');break;
       }
       case'schedule-details':scheduleSheet(id);break;
@@ -496,6 +603,20 @@ document.addEventListener('submit',event=>{
   const f=new FormData(form),cents=parseMoney(f.get('amount'));lastActive=Date.now();
   try{
     switch(form.id){
+      case'credit-form':{
+        const amount=Number(String(f.get('amount')).replace(',','.')),months=Number(f.get('months')),rate=Number(String(f.get('rate')).replace(',','.'));
+        if(amount>1000000||months>600||rate>100)throw new Error('Utilisez un montant jusqu’à 1 000 000 €, une durée jusqu’à 600 mois et un taux jusqu’à 100 %.');
+        const result=creditProjection(amount,months,rate),el=document.getElementById('credit-result');
+        if(el)el.innerHTML=`<p>Mensualité illustrative</p><strong>${esc(displayMoney(result.monthly))}</strong><small>Total : ${esc(displayMoney(result.total))} · Intérêts : ${esc(displayMoney(result.interest))}</small>`;
+        break;
+      }
+      case'invest-cash-form':{
+        if(!Number.isSafeInteger(cents)||cents<=0||cents>100000000)throw new Error('Saisissez un montant fictif entre 0,01 et 1 000 000 $.');
+        const withdraw=form.dataset.withdraw==='true';
+        if(withdraw&&cents>preview.cash)throw new Error('Le montant dépasse la trésorerie fictive.');
+        const next=preview.cash+(withdraw?-cents:cents);if(!Number.isSafeInteger(next)||next>1000000000)throw new Error('La trésorerie fictive ne peut pas dépasser 10 000 000 $.');
+        preview.cash=next;savePreview();closeSheet();render();toast('Trésorerie de démonstration mise à jour.');break;
+      }
       case'scenario-form':{
         if(!editMode)throw new Error('Active le mode édition avant d’enregistrer un scénario.');
         const draft=readEditorDraft(form),operation=event.submitter?.dataset.operation||form.dataset.operation||'regenerate',fields=captureEditorUndo();
@@ -583,9 +704,9 @@ setInterval(()=>{
 },60000);
 window.addEventListener('offline',()=>toast('Mode hors ligne · votre espace reste disponible.'));
 window.addEventListener('online',()=>toast('Connexion rétablie.'));
-if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js?v=8').catch(()=>{});}
+if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js?v=9').catch(()=>{});}
 theme();persist();render();
-window.__lumaReady=true;
+window.__flexReady=true;
 if(window.visualViewport){
   const viewport=window.visualViewport;
   const keepFooterVisible=()=>{
@@ -596,7 +717,7 @@ if(window.visualViewport){
   viewport.addEventListener('scroll',keepFooterVisible,{passive:true});
   keepFooterVisible();
 }
-window.dispatchEvent?.(new Event('luma:ready'));
+window.dispatchEvent?.(new Event('flex:ready'));
 const splash=document.getElementById('app-splash');
 if(splash){
   const delay=window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches?0:800;

@@ -67,7 +67,7 @@ test('les raccourcis de l’accueil et les comptes restent accessibles sans chan
   assert.match(app(),/class="transactions recent-transactions"/);assert.match(app(),/class="home-widgets"/);
   await click('accounts');assert.match(sheet(),/Vos comptes/);await click('close-sheet');
   for(const currency of ['USD','GBP','EGP','THB','EUR']){
-    await click('select-account',currency);assert.match(app(),new RegExp('Personnel · '+currency));
+    await click('select-account',currency);assert.match(app(),new RegExp('Personal · '+currency));
   }
   assert.deepEqual(saved(),before);
   await click('expenses',undefined,{period:'month'});assert.match(app(),/expenses-screen/);
@@ -84,8 +84,8 @@ test('le masquage retire les chiffres et la courbe du nouvel accueil',async()=>{
   assert.match(app(),/<strong>••••<\/strong>/);
   await click('hide');assert.deepEqual(saved(),before);assert.match(app(),/class="widget-line"/);
 });
-test('les cinq onglets et tous les principaux dialogues rendent sans erreur',async()=>{
-  for(const [id,expected] of [['home','Vos transactions'],['cards','Vos cartes'],['payments','Paiements'],['savings','Vos poches'],['analytics','Votre argent']]){
+test('les six onglets et les parcours existants restent accessibles',async()=>{
+  for(const [id,expected] of [['home','Vos transactions'],['cards','Vos cartes'],['payments','Paiements'],['savings','Vos poches'],['analytics','Votre argent'],['credit','A plan that fits'],['invest','Brokerage account'],['crypto','No holdings'],['points','FlexPoints']]){
     await click('tab',id);assert.match(app(),new RegExp(expected));
   }
   for(const act of ['accounts','topup','send','exchange','request','more','account-details','profile','location','card-details','card-limit','new-card','new-pocket','new-contact','budget','notifications','install']){
@@ -103,13 +103,47 @@ test('la page dépenses filtre les opérations, change de vue et revient à l’
   await click('expenses-mode','bars');assert.match(app(),/expenses-timeline/);
   await click('expenses-mode','line');assert.match(app(),/Dépenses cumulées/);
   await click('expenses-period','month');assert.match(app(),/Par catégorie/);
-  await click('expenses-shift','-1');assert.match(app(),/expenses-period-nav/);
+  await click('expenses-period-menu');assert.match(sheet(),/expenses-period-nav/);await click('expenses-shift','-1');assert.match(sheet(),/expenses-period-nav/);await click('close-sheet');
   await click('expenses-period','all');
   await click('expenses-category','restaurant');assert.match(app(),/<h2>Restaurants<\/h2>/);
   await click('expenses-more');
   await click('expenses-category','');assert.match(app(),/Toutes les dépenses/);
   await click('expenses-back');assert.match(app(),/Votre argent/);
   assert.deepEqual(saved(),before);
+});
+test('les analyses et dépenses sont des pages complètes, leurs périodes et devise restent cohérentes',async()=>{
+ const before=saved();await click('tab','analytics');assert.doesNotMatch(app(),/<nav class="nav"/);
+ await click('analytics-period');assert.match(sheet(),/This week/);await click('analytics-select-period','month');assert.match(app(),/This month/);
+ await click('expenses',undefined,{period:'month'});assert.doesNotMatch(app(),/<nav class="nav"/);
+ for(const period of ['week','halfyear','year']){await click('expenses-period',period);assert.match(app(),new RegExp('data-id="'+period+'" class="is-active"'));}
+ await click('expenses-back');await click('back-main');assert.match(app(),/<nav class="nav"/);
+ for(const id of ['home','credit','invest','payments','crypto','points'])assert.match(app().slice(app().indexOf('<nav')),new RegExp('data-id="'+id+'"'));
+ assert.deepEqual(saved(),before);
+});
+test('cartes promotionnelles et menus ne modifient pas le registre',async()=>{
+ const before=saved();await click('tab','home');await click('promo-slide','1');assert.match(app(),/Make it yours/);
+ await click('promo-slide','2');assert.match(app(),/Room for your plans/);await click('promo-slide','0');
+ await click('move');assert.match(sheet(),/Changer de devise/);await click('close-sheet');
+ await click('more');assert.match(sheet(),/Vos cartes/);assert.match(sheet(),/Vos poches/);await click('close-sheet');
+ await click('promo-dismiss');assert.doesNotMatch(app(),/promo-carousel/);assert.deepEqual(saved(),before);
+});
+test('portefeuille et liste de suivi sont fictifs et indépendants des soldes bancaires',async()=>{
+ const before=saved();await click('tab','invest');assert.match(app(),/Cash balance/);
+ await click('invest-deposit');assert.match(sheet(),/Le solde des comptes et le registre bancaire ne sont pas modifiés/);
+ submit('invest-cash-form',{amount:'100'},{withdraw:'false'});assert.equal(JSON.parse(values.get('flex-preview-v1')).cash,10000);
+ await click('invest-withdraw');submit('invest-cash-form',{amount:'101'},{withdraw:'true'});assert.equal(JSON.parse(values.get('flex-preview-v1')).cash,10000);assert.match(elements.get('form-error').textContent,/dépasse/);
+ submit('invest-cash-form',{amount:'25'},{withdraw:'true'});assert.equal(JSON.parse(values.get('flex-preview-v1')).cash,7500);
+ await click('brokerage-toggle');assert.doesNotMatch(app(),/Cash balance/);await click('brokerage-toggle');
+ await click('invest-market');assert.match(sheet(),/sans cotations/);await click('instrument','global');await click('watchlist-toggle','global');assert.deepEqual(JSON.parse(values.get('flex-preview-v1')).watchlist,['global']);
+ await click('watchlist-toggle','global');assert.deepEqual(JSON.parse(values.get('flex-preview-v1')).watchlist,[]);await click('close-sheet');
+ await click('crypto-market');assert.match(sheet(),/Bitcoin/);assert.doesNotMatch(sheet(),/Global Equity/);await click('close-sheet');
+ assert.deepEqual(saved(),before);await click('tab','home');
+});
+test('calculateur crédit : calcul et erreur affichés sans modifier les comptes',async()=>{
+ const before=saved();await click('tab','credit');elements.set('credit-result',new Element('credit-result'));
+ submit('credit-form',{amount:'1200',months:'12',rate:'0'});assert.match(elements.get('credit-result').innerHTML,/€100,00/);
+ submit('credit-form',{amount:'1200',months:'0',rate:'0'});assert.match(elements.get('form-error').textContent,/durée/);
+ assert.deepEqual(saved(),before);await click('tab','home');
 });
 test('mode édition : étapes, validation, régénération, sortie et annulation complète',async()=>{
   const before=saved();await click('profile');assert.match(sheet(),/Mode édition/);await click('editor');
@@ -176,7 +210,7 @@ test('demande de paiement, réception idempotente et copie',async()=>{
   await click('receive-request',r.id);
   assert.equal(saved().wallets.EUR,before+1920);
   await click('share-request',r.id);
-  assert.match(values.get('clipboard'),/LUMA — Demande de paiement/);
+  assert.match(values.get('clipboard'),/DÉMO FLEX — Demande fictive/);
   
 });
 test('l’annulation d’une édition préserve les opérations personnelles ajoutées ensuite',async()=>{
@@ -190,7 +224,7 @@ test('l’annulation d’une édition préserve les opérations personnelles ajo
 });
 test('export CSV, données valides et verrouillage final',async()=>{
   await click('export');
-  assert.match(download.at(-1),/^Luma-transactions-/);
+  assert.match(download.at(-1),/^Flex-DEMO-transactions-/);
   assert.ok(assertState(saved()));
   await click('lock');
   assert.match(app(),/Saisissez votre code/);

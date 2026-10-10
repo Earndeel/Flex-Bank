@@ -1,5 +1,5 @@
-const CACHE = 'luma-v8';
-const FILES = ['./design.css?v=8','./scenario.js?v=2','./editor.css?v=1','./expenses.js?v=1','./expenses.css?v=1','./','./index.html','./styles.css?v=8','./core.js?v=8','./app.js?v=8','./startup.js?v=8','./icon-192.png?v=8','./icon-512.png?v=8','./apple-touch-icon.png?v=8','./manifest.webmanifest?v=8'];
+const CACHE = 'flex-v9';
+const FILES = ['./icon.svg?v=9','./ui-metrics.js?v=1','./promo-travel.svg?v=1','./promo-card.svg?v=1','./promo-assets.svg?v=1','./design.css?v=9','./scenario.js?v=3','./editor.css?v=1','./expenses.js?v=2','./expenses.css?v=1','./','./index.html','./styles.css?v=9','./core.js?v=9','./app.js?v=9','./startup.js?v=9','./icon-192.png?v=9','./icon-512.png?v=9','./apple-touch-icon.png?v=9','./manifest.webmanifest?v=9'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(FILES)).then(()=>self.skipWaiting()));
 });

@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#09090b">
+  <meta name="theme-color" content="#000000">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Luma">
-  <meta name="description" content="Luma, espace de démonstration mobile avec comptes multidevises, cartes, épargne et montants fictifs.">
-  <title>Luma — Démonstration</title>
+  <meta name="apple-mobile-web-app-title" content="Flex">
+  <meta name="description" content="Flex, espace de démonstration mobile avec comptes multidevises, cartes, épargne et montants fictifs.">
+  <title>Flex — Démonstration</title>
   <style>
     body{margin:0;background:#0a1019}
     .app-splash{position:fixed;inset:0;z-index:1000;background:#0f1213;color:#f2f5fa;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif;transition:opacity .35s ease,visibility .35s ease}
@@ -23,24 +23,24 @@
     @keyframes splash-progress{0%{transform:translateX(-38px)}100%{transform:translateX(82px)}}
     @media(prefers-reduced-motion:reduce){.splash-track span{animation:none}.app-splash{transition:none}}
   </style>
-  <link rel="icon" href="./icon-192.png?v=8" type="image/png" sizes="192x192">
-  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=8">
-  <link rel="manifest" href="./manifest.webmanifest?v=8">
-  <link rel="stylesheet" href="./styles.css?v=8">
+  <link rel="icon" href="./icon.svg?v=9" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=9">
+  <link rel="manifest" href="./manifest.webmanifest?v=9">
+  <link rel="stylesheet" href="./styles.css?v=9">
   <link rel="stylesheet" href="./expenses.css?v=1">
   <link rel="stylesheet" href="./editor.css?v=1">
-  <link rel="stylesheet" href="./design.css?v=8">
+  <link rel="stylesheet" href="./design.css?v=9">
 </head>
 <body class="dark">
-  <div id="app-splash" class="app-splash" role="status" aria-label="Chargement de Luma">
-    <div class="splash-logo"><img src="./icon-512.png?v=8" alt="" width="256" height="256"></div>
+  <div id="app-splash" class="app-splash" role="status" aria-label="Chargement de Flex">
+    <div class="splash-logo"><img src="./icon-512.png?v=9" alt="" width="256" height="256"></div>
     <p id="splash-caption" class="splash-caption">Votre espace se prépare.</p>
     <div class="splash-track" aria-hidden="true"><span></span></div>
     <button id="splash-retry" class="splash-retry" hidden>Réessayer</button>
     
   </div>
   <div class="desktop-note" aria-hidden="true">
-    <span class="desktop-brand">luma</span>
+    <span class="desktop-brand">flex</span>
     <h1>Votre quotidien.<br>En mouvement.</h1>
     <p>Un espace personnel pour explorer<br>une autre façon de gérer l’argent.</p>
     <div class="desktop-caption"><span class="dot"></span> EXPÉRIENCE MOBILE</div>
@@ -52,7 +52,7 @@
   </div>
    <footer class="global-disclosure" aria-label="Application de démonstration sans compte bancaire réel">Démonstration — aucun compte réel</footer>
   <noscript><style>.app-splash{display:none}</style><p style="color:#fff">Active JavaScript pour ouvrir cette cette application.</p></noscript>
-  <script src="./startup.js?v=8" defer></script>
-  <script type="module" src="./app.js?v=8"></script>
+  <script src="./startup.js?v=9" defer></script>
+  <script type="module" src="./app.js?v=9"></script>
 </body>
 </html>

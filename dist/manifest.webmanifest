@@ -1,23 +1,23 @@
 {
-  "name": "Luma",
-  "short_name": "Luma",
-  "description": "Comptes, cartes, paiements et épargne.",
+  "name": "Flex — Démonstration",
+  "short_name": "Flex",
+  "description": "Comptes, cartes, paiements et épargne fictifs.",
   "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#09090b",
-  "theme_color": "#09090b",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "lang": "fr",
   "icons": [
     {
-      "src": "./icon-192.png?v=8",
+      "src": "./icon-192.png?v=9",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "./icon-512.png?v=8",
+      "src": "./icon-512.png?v=9",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

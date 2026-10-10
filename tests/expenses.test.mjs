@@ -32,7 +32,7 @@ test('une période vide et une catégorie unique rendent un anneau valide',()=>{
   assert.match(html,/Aucune dépense/);
   assert.doesNotMatch(html,/NaN|Infinity/);
   const one=renderExpenseSummary(expenseMetrics([tx('meal',-432123)],options),settings);
-  assert.match(one,/<circle[^>]+stroke="#70a9ff"/);
+  assert.match(one,/<circle[^>]+stroke="#ff7635"/);
 });
 test('masquer les montants protège le total, les catégories et les graphiques accessibles',()=>{
   const metrics=expenseMetrics([tx('meal',-432123)],options);
