@@ -26,6 +26,28 @@ test('les installations Android et desktop ne reçoivent pas le traitement iOS',
   for(const navigator of [{userAgent:'Android',platform:'Linux armv8l'},{userAgent:'Macintosh',platform:'MacIntel',maxTouchPoints:0},{userAgent:'Windows',platform:'Win32'}])assert.equal(boot(navigator,true).has('ios-standalone'),false);
 });
 
+function scrollHeaderFixture() {
+  const classes=new Set(),listeners=new Map(),phone={scrollTop:0},main={scrollTop:0};
+  const window={navigator:{standalone:true,userAgent:'iPhone'},scrollY:0,matchMedia:()=>({matches:false}),addEventListener(name,callback,options){const list=listeners.get(name)||[];list.push({callback,options});listeners.set(name,list);}};
+  const document={documentElement:{scrollTop:0,classList:{toggle(name,on){if(on)classes.add(name);else classes.delete(name);}}},body:{scrollTop:0},scrollingElement:{scrollTop:0},getElementById:()=>null,querySelectorAll:()=>[phone,main]};
+  vm.runInNewContext(source('startup.js'),{window,document,localStorage:{getItem:()=>null},setTimeout:()=>0,clearTimeout(){}});
+  const fire=name=>listeners.get(name)?.forEach(listener=>listener.callback());
+  return {classes,window,document,phone,main,fire,listeners};
+}
+test('header : opaque en haut, flouté pendant le défilement, restauré au retour en haut',()=>{
+  const f=scrollHeaderFixture();assert.ok(f.classes.has('ios-standalone'));assert.equal(f.classes.has('header-scrolled'),false);
+  f.window.scrollY=50;f.fire('scroll');assert.equal(f.classes.has('header-scrolled'),true);
+  f.window.scrollY=0;f.fire('scroll');assert.equal(f.classes.has('header-scrolled'),false);
+  f.window.scrollY=90;f.fire('pageshow');assert.equal(f.classes.has('header-scrolled'),true);
+});
+test('header : les défilements de la racine et des conteneurs sont reconnus même avec scrollY à zéro',()=>{
+  const f=scrollHeaderFixture();assert.equal(f.listeners.get('scroll')[0].options.capture,true);assert.equal(f.listeners.get('scroll')[0].options.passive,true);
+  for(const surface of [f.document.scrollingElement,f.document.documentElement,f.document.body,f.phone,f.main]){
+    surface.scrollTop=70;f.fire('scroll');assert.equal(f.classes.has('header-scrolled'),true);
+    surface.scrollTop=0;f.fire('scroll');assert.equal(f.classes.has('header-scrolled'),false);
+  }
+});
+
 function dependencyURLs() {
   const html=source('index.html'),urls=new Set([...html.matchAll(/(?:src|href)="(\.\/[^"\s]+)"/g)].map(match=>match[1]));
   const queue=[...urls].filter(url=>url.split('?')[0].endsWith('.js')),seen=new Set();

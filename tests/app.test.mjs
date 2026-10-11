@@ -301,6 +301,38 @@ test('l’annulation d’une édition préserve les opérations personnelles ajo
   assert.match(elements.get('form-error').textContent,/activité a changé/);assert.equal(saved().wallets.EUR,6501000);assert.equal(saved().transactions.length,count+1);
   await click('editor-exit');
 });
+test('édition IBAN : validation, coordonnées copiées et annulation sans toucher aux dépenses',async()=>{
+  await click('select-language','fr');const before=saved();await click('editor');assert.match(sheet(),/Gérer les dépenses/);assert.match(sheet(),/Modifier l’IBAN/);
+  await click('editor-iban');assert.match(sheet(),/id="editor-iban-form"/);
+  await submit('editor-iban-form',{iban:'invalid'});assert.deepEqual(saved(),before);assert.match(elements.get('form-error').textContent,/IBAN/);
+  await submit('editor-iban-form',{iban:'fr76 3000 4028 3798 7654 3210 943'});
+  assert.equal(saved().accountIban,'FR7630004028379876543210943');assert.deepEqual(saved().transactions,before.transactions);assert.deepEqual(saved().wallets,before.wallets);
+  await click('account-details');assert.match(sheet(),/FR76 3000 4028 3798 7654 3210 943/);await click('copy-account');assert.match(values.get('clipboard'),/FR76 3000 4028 3798 7654 3210 943/);
+  await click('editor');await click('editor-undo');assert.deepEqual(saved(),before);await click('editor-exit');
+});
+test('édition des dépenses : création, modification, suppression et annulation dans les événements de l’app',async()=>{
+  await click('select-language','fr');await click('editor');await click('editor-expenses');assert.match(sheet(),/Ajouter une dépense/);await click('editor-expense-new');assert.match(sheet(),/id="editor-expense-form"/);
+  const before=saved(),stamp=new Date(Date.now()-3600000).toISOString();
+  const fields={name:'Carrefour City · Paris',amount:'34,57',currency:'EUR',category:'groceries',region:'paris',timestamp:stamp,note:'Courses manuelles'};
+  await submit('editor-expense-form',{...fields,amount:'0'});assert.deepEqual(saved(),before);
+  await submit('editor-expense-form',fields);const created=saved().transactions.find(tx=>tx.name===fields.name);
+  assert.ok(created);assert.equal(created.amount,-3457);assert.equal(created.automatic,false);assert.deepEqual(saved().wallets,before.wallets);assert.match(sheet(),/Dépense créée/);
+  await click('transaction',created.id);assert.match(sheet(),/Modifier la dépense/);await click('editor-expense-edit',created.id);assert.match(sheet(),/value="34.57"/);
+  await submit('editor-expense-form',{...fields,name:'Carrefour Express · Paris',amount:'51,23',category:'shopping'},{expense:created.id});
+  const modified=saved().transactions.find(tx=>tx.id===created.id);assert.equal(modified.amount,-5123);assert.equal(modified.category,'shopping');assert.equal(modified.name,'Carrefour Express · Paris');assert.equal(saved().transactions.length,before.transactions.length+1);assert.deepEqual(saved().wallets,before.wallets);
+  const updated=saved();await click('editor-expense-delete',created.id);assert.match(sheet(),/Supprimer la dépense/);assert.deepEqual(saved(),updated);
+  await click('editor-expense-delete-confirm',created.id);assert.equal(saved().transactions.some(tx=>tx.id===created.id),false);assert.ok(saved().deletedExpenseIds.includes(created.id));assert.match(sheet(),/Dépense supprimée/);
+  await click('editor-undo');assert.deepEqual(saved(),updated);assert.match(sheet(),/dernier changement a été annulé/);
+  await click('editor-expense-delete',created.id);await click('editor-expense-delete-confirm',created.id);await click('editor-exit');
+  const exited=saved();await submit('editor-expense-form',fields);assert.deepEqual(saved(),exited);await submit('editor-iban-form',{iban:'FR7630004028379876543210943'});assert.deepEqual(saved(),exited);
+});
+test('les nouveaux formulaires d’édition suivent le choix anglais ou français',async()=>{
+  await click('select-language','en');await click('editor');assert.match(sheet(),/Manage expenses/);assert.match(sheet(),/Edit IBAN/);
+  await click('editor-expenses');assert.match(sheet(),/Add an expense/);await click('editor-expense-new');assert.match(sheet(),/Expense amount/);assert.match(sheet(),/Date and time/);
+  await click('editor-iban');assert.match(sheet(),/Displayed IBAN/);assert.match(sheet(),/Save IBAN/);
+  await click('select-language','fr');await click('editor');assert.match(sheet(),/Gérer les dépenses/);await click('editor-exit');
+});
+
 test('export CSV, données valides et verrouillage final',async()=>{
   await click('export');
   assert.match(download.at(-1),/^Flex-DEMO-transactions-/);

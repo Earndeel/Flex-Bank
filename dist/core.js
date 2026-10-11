@@ -327,7 +327,7 @@ export function rollForward(state, now = new Date()) {
   if (start > today) start = today;
   if (start < shiftDay(today,-366)) start = shiftDay(today,-366);
   let count = 0;
-  const existing = new Set(state.transactions.map(t=>t.id));
+  const existing = new Set([...state.transactions.map(t=>t.id),...(state.deletedExpenseIds||[])]);
   const spent = new Map();
   state.transactions.forEach(t=>{
     if (!t.automatic || t.status!=='completed' || t.amount>=0) return;
@@ -421,6 +421,8 @@ export function parseMoney(value) {
   return Math.round(Number(normalized)*100);
 }
 export function assertState(state) {
+  if(state?.accountIban!==undefined&&(typeof state.accountIban!=='string'||! /^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(state.accountIban)))return false;
+  if(state?.deletedExpenseIds!==undefined&&(!Array.isArray(state.deletedExpenseIds)||state.deletedExpenseIds.some(id=>typeof id!=='string')))return false;
   if(state?.scenario&&!validScenario(state.scenario))return false;
   if (state?.version!==VERSION || !state.wallets || state.wallets.EUR<FLOOR || !Array.isArray(state.transactions)) return false;
   if (Object.keys(RATES).some(c=>!Number.isSafeInteger(state.wallets[c]) || state.wallets[c]<0)) return false;

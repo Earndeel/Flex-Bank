@@ -8,10 +8,11 @@
   document.documentElement.classList.toggle('ios-standalone',Boolean(installed));
   // Frost only the background once content passes behind the pinned header.
   const updateHeader=()=>{
-    const scrollTop=window.scrollY??document.scrollingElement?.scrollTop??0;
+    const surfaces=[document.scrollingElement,document.documentElement,document.body,...(document.querySelectorAll?.('#app,.screen,.phone-shell')||[])];
+    const scrollTop=Math.max(window.scrollY||window.pageYOffset||0,...surfaces.map(surface=>surface?.scrollTop||0));
     document.documentElement.classList.toggle('header-scrolled',scrollTop>8);
   };
-  window.addEventListener('scroll',updateHeader,{passive:true});
+  window.addEventListener('scroll',updateHeader,{passive:true,capture:true});
   window.addEventListener('pageshow',updateHeader);
   window.addEventListener('flex:ready',updateHeader);
   updateHeader();

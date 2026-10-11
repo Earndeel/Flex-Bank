@@ -1,15 +1,16 @@
 import {REFERENCE_ICONS} from './reference-icons.js?v=2';
-import {getLanguage,getLocale,setLanguage,tr,localizeHTML} from './i18n.js?v=2';
+import {getLanguage,getLocale,setLanguage,tr,localizeHTML} from './i18n.js?v=3';
 import {
   FLOOR,STORAGE_KEY,PIN_HASH,RATES,CURRENCIES,REGIONS,CATEGORY_META,
   initialState,assertState,rollForward,dateKey,shiftDay,regionById,regionFromCoordinates,
   sendMoney,topUp,exchange,pocketMove,monthMetrics,formatMoney,parseMoney,applyTransaction
-} from './core.js?v=10';
+} from './core.js?v=11';
 import {expenseMetrics,analyticsBreakdownMetrics,renderExpenseSummary,shiftExpensePeriod} from './expenses.js?v=4';
-import {SCENARIO_FIELDS,scenarioDefaults,scenarioFingerprint,regenerateScenario,changeScenarioBalances,renderScenarioEditor} from './scenario.js?v=4';
+import {isEditableExpense,formatIban,localDateTime,saveExpense,deleteExpense,changeAccountIban,renderEditorTools,renderExpenseList,renderExpenseForm,renderIbanForm} from './expense-editor.js?v=1';
+import {SCENARIO_FIELDS,scenarioDefaults,scenarioFingerprint,regenerateScenario,changeScenarioBalances,renderScenarioEditor} from './scenario.js?v=5';
 
 import {displayMoney,dashboardMetrics,periodRange,creditProjection,EXPENSE_COLORS} from './ui-metrics.js?v=2';
-import {setupDefaults,restoreProfile,profileIdentity,readSetupDraft,addSetupStop,createSetupState,renderSetup} from './setup.js?v=1';
+import {setupDefaults,restoreProfile,profileIdentity,readSetupDraft,addSetupStop,createSetupState,renderSetup} from './setup.js?v=2';
 
 const ICONS = {
   brandHome:'<path d="M7 21V4h12M7 11h9" stroke-width="3.5"/>',
@@ -82,6 +83,7 @@ let activeMonth=dateKey(new Date()).slice(0,7),showCard=false,hiddenAt=0,lastAct
 let expensesScope='spending';
 let expensesPeriod='year',expensesAnchor='',expensesMode='donut',expensesCategory='',expensesLimit=20;
 let editMode=false,editorDraft=null,editorUndo=null,editorNotice='';
+let editorExpenseCurrency='EUR',editorExpenseLimit=30;
 const root=document.getElementById('app'),sheetRoot=document.getElementById('sheet-root');
 const localizedMoney=(amount,currency='EUR')=>displayMoney(amount,currency,{locale:getLocale()});
 const money=(amount,currency='EUR')=>state.hideBalance?'••••':localizedMoney(amount,currency);
@@ -91,7 +93,8 @@ let preview={cash:0,watchlist:[]};
 try{const savedPreview=JSON.parse(localStorage.getItem('flex-preview-v1')||'null');if(savedPreview&&Number.isSafeInteger(savedPreview.cash)&&savedPreview.cash>=0&&Array.isArray(savedPreview.watchlist))preview={cash:savedPreview.cash,watchlist:savedPreview.watchlist.filter(x=>typeof x==='string')};}catch{}
 const savePreview=()=>{try{localStorage.setItem('flex-preview-v1',JSON.stringify(preview));}catch{toast('Les réglages du portefeuille restent disponibles pendant cette session.');}};
 const ACCOUNT_REF='FR76 3000 6060 1234 5678 9012 345';
-const accountReference=()=>state.currency==='EUR'?ACCOUNT_REF:'FR76 3000 6060 1234 5678 9012 345';
+const eurAccountIban=()=>formatIban(state.accountIban||ACCOUNT_REF);
+const accountReference=()=>state.currency==='EUR'?eurAccountIban():'FR76 3000 6060 1234 5678 9012 345';
 const currentRegion=()=>regionById(state.location.regionId);
 const nowDay=()=>dateKey(new Date(),currentRegion().tz);
 const ordered=()=>[...state.transactions].sort((a,b)=>b.timestamp.localeCompare(a.timestamp));
@@ -311,7 +314,7 @@ function render() {
   const disclosure=state.scenario?'':'';
   if(!unlocked){root.innerHTML=localizeHTML(lockHTML());return;}
   const content=view==='expenses'?expenses():view==='analytics-overview'?analyticsOverview():view==='transactions'?allTransactions():({home,cards,payments,savings,analytics,invest,credit,crypto:cryptoView,points}[tab]||home)();
-  const editorBanner=editMode?'<div class="editor-banner"><span>Mode édition</span><div class="editor-banner-actions"><button data-act="editor">Régler le scénario</button><button class="editor-exit-button" data-act="editor-exit" aria-label="Quitter le mode édition">×</button></div></div>':disclosure;
+  const editorBanner=editMode?'<div class="editor-banner"><span>Mode édition</span><div class="editor-banner-actions"><button data-act="editor-expenses">Dépenses</button><button data-act="editor">Régler le scénario</button><button class="editor-exit-button" data-act="editor-exit" aria-label="Quitter le mode édition">×</button></div></div>':disclosure;
   const screenName=view==='analytics-overview'?'analytics':view==='main'?tab:view;
   root.innerHTML=localizeHTML(`<section class="screen ${screenName}-screen">${editMode?editorBanner:''}${content}${editMode?'':disclosure}${!storageAvailable?'<div class="info-box neutral">Les données ne peuvent pas être sauvegardées dans ce navigateur.</div>':''}</section>${view==='main'&&tab!=='analytics'?nav():''}`);
 }
@@ -354,11 +357,11 @@ function transactionSheet(id) {
   const t=state.transactions.find(t=>t.id===id);if(!t)return;
   const c=categoryMeta(t),amount=t.status==='declined'?t.attemptedAmount:t.amount;
   const stamp=new Intl.DateTimeFormat(getLocale(),{timeZone:regionById(t.region).tz,dateStyle:'long',timeStyle:'short'}).format(new Date(t.timestamp));
-  openSheet('Détails de la transaction',`<div class="detail-hero"><div class="tx-icon" style="background:${c.color}17;color:${c.color}">${icon(c.icon)}</div><p data-i18n-skip>${esc(t.name)}</p><h3 class="${amount>0?'positive':''}">${amount>0?'+':''}${esc(money(amount,t.currency))}</h3><p>${t.status==='declined'?'Paiement refusé':'Transaction · Terminée'}</p></div><div class="details-list">${detailsRow('Date',stamp)}${detailsRow('Lieu',t.city||'En ligne')}${detailsRow('Catégorie',c.label)}${detailsRow('Méthode',t.method||'—')}${t.originalAmount&&t.originalCurrency!==t.currency?detailsRow('Montant local',state.hideBalance?'••••':localizedMoney(t.originalAmount,t.originalCurrency)):''}${detailsRow('Solde après opération',money(t.balanceAfter,t.currency))}${t.note?detailsRow('Message',t.note):''}${detailsRow('Référence','FLEX-'+t.id.slice(-12).toUpperCase())}</div><button class="primary-button" data-act="close-sheet">Fermer</button>`);
+  openSheet('Détails de la transaction',`<div class="detail-hero"><div class="tx-icon" style="background:${c.color}17;color:${c.color}">${icon(c.icon)}</div><p data-i18n-skip>${esc(t.name)}</p><h3 class="${amount>0?'positive':''}">${amount>0?'+':''}${esc(money(amount,t.currency))}</h3><p>${t.status==='declined'?'Paiement refusé':'Transaction · Terminée'}</p></div><div class="details-list">${detailsRow('Date',stamp)}${detailsRow('Lieu',t.city||'En ligne')}${detailsRow('Catégorie',c.label)}${detailsRow('Méthode',t.method||'—')}${t.originalAmount&&t.originalCurrency!==t.currency?detailsRow('Montant local',state.hideBalance?'••••':localizedMoney(t.originalAmount,t.originalCurrency)):''}${detailsRow('Solde après opération',money(t.balanceAfter,t.currency))}${t.note?detailsRow('Message',t.note):''}${detailsRow('Référence','FLEX-'+t.id.slice(-12).toUpperCase())}</div>${editMode&&isEditableExpense(t)?`<button class="primary-button" data-act="editor-expense-edit" data-id="${esc(t.id)}">Modifier la dépense</button><button class="secondary-button danger-button" data-act="editor-expense-delete" data-id="${esc(t.id)}">Supprimer cette dépense</button>`:''}<button class="primary-button" data-act="close-sheet">Fermer</button>`);
 }
 function accountDetailsSheet() {
   const isEUR=state.currency==='EUR';
-  openSheet('Coordonnées du compte',`<p class="sheet-sub">Coordonnées pour recevoir un virement.</p><div class="details-list">${detailsRow('Titulaire',identity().name)}${detailsRow('Compte',state.currency+' · Flex')}${detailsRow(isEUR?'IBAN':'Référence du compte',accountReference())}${detailsRow('Établissement','Flex')}</div><button class="primary-button" data-act="copy-account">${icon('copy')}Copier ${isEUR?'l’IBAN':'la référence'}</button>`);
+  openSheet('Coordonnées du compte',`<p class="sheet-sub">Coordonnées pour recevoir un virement.</p><div class="details-list">${detailsRow('Titulaire',identity().name)}${detailsRow('Compte',state.currency+' · Flex')}${detailsRow(isEUR?'IBAN':'Référence du compte',accountReference())}${detailsRow('Établissement','Flex')}</div><button class="primary-button" data-act="copy-account">${icon('copy')}Copier ${isEUR?'l’IBAN':'la référence'}</button>${editMode&&isEUR?'<button class="secondary-button" data-act="editor-iban">Modifier l’IBAN</button>':''}`);
 }
 
 function profileSheet() {
@@ -378,7 +381,7 @@ function languageSheet() {
 }
 function editorSheet() {
   if(!editorDraft)editorDraft=scenarioDefaults(state);
-  openSheet('Mode édition',`${editorNotice?`<div class="editor-result" role="status"><strong>${esc(editorNotice)}</strong>${state.scenarioSummary?`${state.scenarioSummary.count} opérations lors de la dernière régénération.<br>${esc(localizedMoney(state.scenarioSummary.expenses))} de dépenses · ${esc(localizedMoney(state.scenarioSummary.income))} de revenus.`:''}</div>`:''}${renderScenarioEditor(editorDraft,{canUndo:!!editorUndo,errorHTML:errorHTML()})}`);
+  openSheet('Mode édition',`${editorNotice?`<div class="editor-result" role="status"><strong>${esc(editorNotice)}</strong>${state.scenarioSummary?`${state.scenarioSummary.count} opérations lors de la dernière régénération.<br>${esc(localizedMoney(state.scenarioSummary.expenses))} de dépenses · ${esc(localizedMoney(state.scenarioSummary.income))} de revenus.`:''}</div>`:''}${renderEditorTools(eurAccountIban())}${renderScenarioEditor(editorDraft,{canUndo:!!editorUndo,errorHTML:errorHTML()})}`);
 }
 function readEditorDraft(form=document.getElementById('scenario-form')) {
   if(!form||!editorDraft)throw new Error('Ouvre le mode édition pour modifier le scénario.');
@@ -388,6 +391,35 @@ function readEditorDraft(form=document.getElementById('scenario-form')) {
 }
 function captureEditorUndo() {
   return SCENARIO_FIELDS.map(key=>({key,present:Object.hasOwn(state,key),value:state[key]===undefined?undefined:JSON.parse(JSON.stringify(state[key]))}));
+}
+function requireEditMode() {
+  if(!editMode)throw new Error('Active le mode édition avant d’enregistrer un scénario.');
+}
+function commitEditorChange(candidate,notice) {
+  requireEditMode();
+  if(!assertState(candidate))throw new Error('Le scénario n’a pas pu être validé. Aucune donnée n’a été modifiée.');
+  const fields=captureEditorUndo();
+  state=candidate;editorUndo={fields,fingerprint:scenarioFingerprint(state)};editorNotice=notice;
+  editorDraft=scenarioDefaults(state);persist();render();
+}
+function preserveEditorDraft() {
+  if(sheetRoot.querySelector('#scenario-form'))readEditorDraft();
+}
+function editorExpensesSheet() {
+  requireEditMode();
+  openSheet('Gérer les dépenses',renderExpenseList(state,{currency:editorExpenseCurrency,limit:editorExpenseLimit,locale:getLocale(),notice:editorNotice,canUndo:!!editorUndo}));
+}
+function expenseEditorSheet(id) {
+  requireEditMode();
+  openSheet(id?'Modifier la dépense':'Nouvelle dépense',renderExpenseForm(state,{id,currency:editorExpenseCurrency,errorHTML:errorHTML()}));
+}
+function ibanEditorSheet() {
+  requireEditMode();openSheet('Modifier l’IBAN',renderIbanForm(eurAccountIban(),{errorHTML:errorHTML()}));
+}
+function deleteExpenseSheet(id) {
+  requireEditMode();const tx=state.transactions.find(tx=>tx.id===id);
+  if(!isEditableExpense(tx))throw new Error('Cette dépense est introuvable ou ne peut pas être supprimée.');
+  openSheet('Supprimer cette dépense',`<p class="sheet-sub">Cette dépense sera retirée de l’historique et des totaux d’Analytics. Le solde affiché reste inchangé.</p><div class="editor-delete-summary"><strong data-i18n-skip>${esc(tx.name)}</strong><span data-i18n-skip>${esc(localizedMoney(tx.amount,tx.currency))}</span></div>${errorHTML()}<button class="primary-button editor-delete-confirm" data-act="editor-expense-delete-confirm" data-id="${esc(id)}">Supprimer la dépense</button><button class="secondary-button" data-act="editor-expenses">Annuler</button>`);
 }
 function locationSheet() {
   openSheet('Votre localisation',`<p class="sheet-sub">La région détermine les nouveaux libellés de commerces, la devise locale et les horaires. Les anciens paiements conservent leur lieu.</p><button class="primary-button" data-act="geolocate">${icon('location')}Utiliser ma position</button><p style="font-size:11px;color:var(--sub);margin:22px 0 12px">OU CHOISIR UNE VILLE</p><div class="transactions">${REGIONS.map(r=>`<button class="tx-row" data-act="select-location" data-id="${r.id}"><span style="font-size:24px;width:33px">${r.flag}</span><span class="tx-body"><span class="tx-name" style="display:block">${r.city}</span><span class="tx-sub" style="display:block">${r.country} · ${r.currency}</span></span>${currentRegion().id===r.id?icon('check'):icon('chevron')}</button>`).join('')}</div><p class="pocket-footnote">La position sert uniquement à choisir une région.<br>Les coordonnées exactes ne sont ni stockées ni envoyées par Flex.</p>`);
@@ -579,6 +611,14 @@ document.addEventListener('click',async event=>{
       case'language':languageSheet();break;
       case'select-language':if(setLanguage(id)){render();languageSheet();}break;
       case'editor':editMode=true;closeSheet();render();editorSheet();break;
+      case'editor-expenses':preserveEditorDraft();editorExpenseLimit=30;editorExpensesSheet();break;
+      case'editor-expense-new':expenseEditorSheet();break;
+      case'editor-expense-edit':expenseEditorSheet(id);break;
+      case'editor-expense-delete':deleteExpenseSheet(id);break;
+      case'editor-expense-delete-confirm':requireEditMode();commitEditorChange(deleteExpense(state,id),'Dépense supprimée.');editorExpensesSheet();break;
+      case'editor-expense-currency':requireEditMode();if(Object.hasOwn(RATES,id)){editorExpenseCurrency=id;editorExpenseLimit=30;editorExpensesSheet();}break;
+      case'editor-expense-more':requireEditMode();editorExpenseLimit+=30;editorExpensesSheet();break;
+      case'editor-iban':preserveEditorDraft();ibanEditorSheet();break;
       case'editor-exit':editMode=false;editorDraft=null;editorNotice='';closeSheet();render();toast('Mode édition désactivé.');break;
       case'editor-add-stop':{
         const draft=readEditorDraft();if(draft.config.stops.length>=12)throw new Error('Le scénario permet jusqu’à 12 étapes.');
@@ -688,6 +728,14 @@ document.addEventListener('submit',async event=>{
         const next=preview.cash+(withdraw?-cents:cents);if(!Number.isSafeInteger(next)||next>1000000000)throw new Error('La trésorerie ne peut pas dépasser 10 000 000 $.');
         preview.cash=next;savePreview();closeSheet();render();toast('Trésorerie mise à jour.');break;
       }
+      case'editor-expense-form':{
+        requireEditMode();const id=form.dataset.expense||undefined,previous=id?state.transactions.find(tx=>tx.id===id):null;
+        const stamp=String(f.get('timestamp'));
+        const timestamp=previous&&stamp===localDateTime(previous.timestamp)?previous.timestamp:stamp;
+        const candidate=saveExpense(state,{id:'manual-editor-'+crypto.randomUUID(),name:f.get('name'),amount:cents,currency:String(f.get('currency')),category:String(f.get('category')),region:String(f.get('region')),timestamp,note:f.get('note')},{id});
+        editorExpenseCurrency=String(f.get('currency'));commitEditorChange(candidate,id?'Dépense modifiée.':'Dépense créée.');editorExpensesSheet();break;
+      }
+      case'editor-iban-form':requireEditMode();commitEditorChange(changeAccountIban(state,f.get('iban')),'IBAN enregistré.');editorSheet();break;
       case'scenario-form':{
         if(!editMode)throw new Error('Active le mode édition avant d’enregistrer un scénario.');
         const draft=readEditorDraft(form),operation=event.submitter?.dataset.operation||form.dataset.operation||'regenerate',fields=captureEditorUndo();
@@ -775,7 +823,7 @@ setInterval(()=>{
 },60000);
 window.addEventListener('offline',()=>toast('Mode hors ligne · votre espace reste disponible.'));
 window.addEventListener('online',()=>toast('Connexion rétablie.'));
-if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js?v=12').catch(()=>{});}
+if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js?v=20').catch(()=>{});}
 theme();persist();render();
 window.__flexReady=true;
 if(window.visualViewport){

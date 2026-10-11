@@ -1,8 +1,8 @@
-import {FLOOR,RATES,CURRENCIES,REGIONS,HISTORY_REVISION,dateKey,shiftDay,threeMonthsAgo,historyRegion,regionById,dailyCandidates,validScenario,scenarioRegion,formatMoney} from './core.js?v=10';
+import {FLOOR,RATES,CURRENCIES,REGIONS,HISTORY_REVISION,dateKey,shiftDay,threeMonthsAgo,historyRegion,regionById,dailyCandidates,validScenario,scenarioRegion,formatMoney} from './core.js?v=11';
 
 const clone=value=>JSON.parse(JSON.stringify(value));
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-export const SCENARIO_FIELDS=['wallets','transactions','scenario','scenarioOpening','scenarioSummary','historyStart','historyRevision','lastGeneratedDate','simulationResumedAt','location'];
+export const SCENARIO_FIELDS=['wallets','transactions','scenario','scenarioOpening','scenarioSummary','historyStart','historyRevision','lastGeneratedDate','simulationResumedAt','location','deletedExpenseIds','accountIban'];
 export const scenarioFingerprint=state=>JSON.stringify(SCENARIO_FIELDS.map(key=>state[key]));
 
 export function scenarioDefaults(state,now=new Date()) {
@@ -24,7 +24,7 @@ function validateBalances(balances) {
 
 // Resolve the opening balance from the requested closing balance and the ledger.
 // Refuse impossible scenarios instead of adding an unexplained compensating credit.
-function reconcileLedger(state,transactions,balances) {
+export function reconcileLedger(state,transactions,balances) {
   validateBalances(balances);
   const sorted=transactions.map(t=>({...t})).sort((a,b)=>a.timestamp.localeCompare(b.timestamp));
   const sums=Object.fromEntries(Object.keys(RATES).map(c=>[c,0])),minimums={...sums};
@@ -66,8 +66,10 @@ export function regenerateScenario(state,config,balances,now=new Date(),{annualS
   if(config.stops.some(stop=>stop.date>today))throw Error('Les étapes de l’historique doivent être datées d’aujourd’hui ou avant.');
   let generated=[];
   for(let day=start;day<=today;day=shiftDay(day,1))for(const tx of dailyCandidates(day,scenarioRegion(config,day),config))if(Date.parse(tx.timestamp)<=now.getTime())generated.push(tx);
-  if(annualSpending!==undefined)generated=allocateAnnualSpending(generated,annualSpending,lastRegion.tz,today.slice(0,4));
   const retained=state.transactions.filter(t=>!t.automatic);
+  const excluded=new Set([...(state.deletedExpenseIds||[]),...retained.map(tx=>tx.id)]);
+  generated=generated.filter(tx=>!excluded.has(tx.id));
+  if(annualSpending!==undefined)generated=allocateAnnualSpending(generated,annualSpending,lastRegion.tz,today.slice(0,4));
   const result=reconcileLedger(state,[...retained,...generated],balances);
   result.scenario=clone(config);result.historyStart=start;result.historyRevision=HISTORY_REVISION;
   result.lastGeneratedDate=today;result.simulationResumedAt=now.toISOString();
