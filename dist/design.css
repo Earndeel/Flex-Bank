@@ -285,3 +285,23 @@ html.ios-standalone{--iphone-status-height:max(env(safe-area-inset-top,0px),6px)
 html.ios-standalone #iphone-status-surface{display:block;position:fixed;top:0;left:0;right:0;height:var(--iphone-status-height);background:#000;z-index:1201;pointer-events:none;filter:none;backdrop-filter:none;-webkit-backdrop-filter:none}
 html.ios-standalone .screen{padding-top:calc(var(--iphone-status-height) + 2px);animation:none}
 html.ios-standalone .topbar{background:var(--bg);opacity:1;transform:none;filter:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+
+/* Keep navigation controls still while the page scrolls underneath. */
+:root{--app-header-inset:env(safe-area-inset-top,0px)}
+html.ios-standalone{--app-header-inset:var(--iphone-status-height)}
+.screen{--app-header-background:var(--bg);--app-header-top:calc(var(--app-header-inset) + 2px)}
+.screen.analytics-screen{--app-header-background:#141414}
+@media(max-width:899px){
+  html .screen:has(> :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading)){padding-top:calc(var(--app-header-top) + 44px)}
+  html .screen:has(> .detail-toolbar){padding-top:calc(var(--app-header-top) + 56px)}
+  html .screen:has(> .back-heading){padding-top:calc(var(--app-header-top) + 67px)}
+  html .screen:has(> .expenses-toolbar){--app-header-top:calc(max(var(--app-header-inset),44px) + 3px)}
+  html.ios-standalone .screen:has(> .expenses-toolbar){--app-header-top:calc(var(--app-header-inset) + 2px)}
+  .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading){position:fixed;top:var(--app-header-top);left:0;right:0;width:min(calc(100% - 32px),468px);height:44px;margin:0 auto;z-index:35;isolation:isolate;background:var(--app-header-background);opacity:1;filter:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+  .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading)::before{content:"";position:absolute;top:calc(0px - var(--app-header-top));bottom:0;left:-16px;right:-16px;z-index:-1;background:var(--app-header-background);pointer-events:none}
+  .screen:has(> :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading)) [id]{scroll-margin-top:calc(var(--app-header-top) + 56px)}
+}
+@media(min-width:900px){
+  .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading){position:sticky;top:var(--app-header-top);z-index:35;isolation:isolate;background:var(--app-header-background);opacity:1;filter:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+  .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading)::before{content:"";position:absolute;top:calc(0px - var(--app-header-top));bottom:0;left:-16px;right:-16px;z-index:-1;background:var(--app-header-background);pointer-events:none}
+}

@@ -1,5 +1,5 @@
-const CACHE = 'flex-v17';
-const FILES = ["./","./index.html","./icon-512.png?v=11","./apple-touch-icon.png?v=11","./manifest.webmanifest?v=11","./styles.css?v=17","./expenses.css?v=1","./editor.css?v=1","./design.css?v=17","./startup.js?v=17","./app.js?v=17","./reference-icons.js?v=2","./i18n.js?v=2","./core.js?v=10","./expenses.js?v=4","./scenario.js?v=4","./ui-metrics.js?v=2","./setup.js?v=1","./icon-192.png?v=11","./promo-travel.svg?v=1","./promo-card.svg?v=1","./promo-assets.svg?v=1"];
+const CACHE = 'flex-v18';
+const FILES = ["./","./index.html","./icon-512.png?v=11","./apple-touch-icon.png?v=11","./manifest.webmanifest?v=11","./styles.css?v=17","./expenses.css?v=1","./editor.css?v=1","./design.css?v=18","./startup.js?v=17","./app.js?v=17","./reference-icons.js?v=2","./i18n.js?v=2","./core.js?v=10","./expenses.js?v=4","./scenario.js?v=4","./ui-metrics.js?v=2","./setup.js?v=1","./icon-192.png?v=11","./promo-travel.svg?v=1","./promo-card.svg?v=1","./promo-assets.svg?v=1"];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(FILES)).then(()=>self.skipWaiting()));
 });
