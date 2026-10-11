@@ -77,8 +77,8 @@ test('écran verrouillé, code incorrect puis accès par 2589',async()=>{
   assert.ok(assertState(saved()));
 });
 test('initiales et nom du setup dans l’accueil, le profil, les cartes et les coordonnées',async()=>{
-  await click('tab','home');assert.match(app(),/<span class="avatar">ED<\/span>/);assert.doesNotMatch(app(),/avatar-memoji/);
-  await click('profile');assert.match(sheet(),/Emma Durand/);assert.match(sheet(),/@emma.durand/);assert.match(sheet(),/Toujours activé/);
+  await click('tab','home');assert.match(app(),/<span class="avatar">ED<\/span>/);assert.doesNotMatch(app(),/avatar-memoji|activity-foot/);
+  await click('profile');assert.match(sheet(),/Emma Durand/);assert.match(sheet(),/@emma.durand/);assert.doesNotMatch(sheet(),/Mode sombre|Toujours activé/);assert.match(sheet(),/data-act="location"/);
   await click('tab','cards');assert.match(app(),/Emma Durand/);await click('card-details');assert.match(sheet(),/Emma Durand/);
   await click('tab','home');await click('account-details');assert.match(sheet(),/Emma Durand/);await click('copy-account');assert.match(values.get('clipboard'),/DÉMONSTRATION — Emma Durand/);await click('close-sheet');
 });
@@ -175,7 +175,7 @@ test('français et anglais se choisissent dans le profil, persistent et préserv
  assert.equal(document.documentElement.lang,'en');assert.match(app(),/>Search<\/span>/);
  assert.match(app(),/>Accounts<\/button>/);assert.match(app(),/Mock IBAN — not usable/);
  assert.match(disclosure.textContent,/Demonstration — no real bank account/);
- assert.match(sheet(),/App language/);await click('close-sheet');await click('profile');assert.match(sheet(),/Dark mode/);
+ assert.match(sheet(),/App language/);await click('close-sheet');await click('profile');assert.doesNotMatch(sheet(),/Dark mode|Always on/);assert.match(sheet(),/data-act="location"/);
  await click('tab','analytics');assert.match(app(),/>Analytics<\/h1>/);assert.match(app(),/>Spent<\/span>/);
  await click('expenses',undefined,{period:'year'});assert.match(app(),/Spent · Personal/);assert.match(app(),/This year/);assert.match(app(),/By Category/);
  assert.match(app(),/Demonstration data/);await click('expenses-back');await click('back-main');await click('account-details');
@@ -277,7 +277,7 @@ test('contact, carte, gel, région, mode sombre et recherche',async()=>{
   await click('freeze');assert.equal(saved().cards.frozen,true);
   await click('select-location','bangkok');assert.equal(saved().location.regionId,'bangkok');
   assert.equal(saved().theme,'dark');
-  await click('toggle-setting','theme');assert.equal(saved().theme,'dark');assert.match(sheet(),/Toujours activé/);assert.doesNotMatch(sheet(),/data-id="theme"/);
+  await click('toggle-setting','theme');assert.equal(saved().theme,'dark');assert.doesNotMatch(sheet(),/Mode sombre|Toujours activé/);assert.match(sheet(),/data-act="location"/);assert.doesNotMatch(sheet(),/data-id="theme"/);
   await click('search');assert.match(app(),/Rechercher un lieu/);
   await click('filter','out');assert.match(app(),/Transactions/);
 });

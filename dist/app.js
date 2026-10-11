@@ -187,14 +187,13 @@ function promo(invest=false) {
   return `<section class="promo-carousel" aria-label="${invest?'Découvrir Invest':'À découvrir'}"><div class="reference-promo"><button class="promo-content" data-act="${act}"><strong>${title}</strong><span>${text}</span><img src="./promo-${art}.svg?v=1" alt="" width="150" height="110"></button>${invest?'':`<button class="promo-close" data-act="promo-dismiss" aria-label="Masquer cette carte">${icon('close')}</button>`}</div>${invest?'':`<div class="carousel-dots" role="group" aria-label="Cartes à découvrir">${slides.map((_,i)=>`<button class="${i===promoIndex?'is-active':''}" data-act="promo-slide" data-id="${i}" aria-label="Carte ${i+1}" aria-pressed="${i===promoIndex}"></button>`).join('')}</div>`}</section>`;
 }
 function home() {
-  const r=currentRegion(),metrics=monthMetrics(state,nowDay().slice(0,7));
+  const metrics=monthMetrics(state,nowDay().slice(0,7));
   const recent=ordered().filter(t=>t.currency===state.currency).slice(0,4),pockets=state.pockets.reduce((n,p)=>n+p.balance,0);
   const digits=String(Math.trunc(state.wallets[state.currency]/100)).length,balanceSize=digits>8?32:digits>6?38:44;
   return `${topbar()}<section class="hero" aria-label="Solde du compte ${state.currency}"><button class="account-select" data-act="accounts"><span class="account-flag" aria-hidden="true">${currencyFlag(state.currency)}</span>Personal · ${state.currency}</button><div class="hero-balance"><h1 class="balance" style="--balance-size:${balanceSize}px"><button data-act="hide" aria-label="${state.hideBalance?'Afficher les montants':'Masquer les montants'}">${balanceHTML()}</button></h1></div><div class="account-reference-group"><button class="account-reference" data-act="account-details" aria-describedby="account-reference-note">${icon('building')}<span>${esc(accountReference())}</span></button>${state.currency==='EUR'?'<p id="account-reference-note" class="account-reference-note"></p>':'<span id="account-reference-note" class="sr-only"></span>'}</div><button class="accounts-pill" data-act="accounts">Accounts</button></section>
   <div class="quick-actions">${[['topup','plus','Add money'],['move','move','Move'],['account-details','building','Details'],['more','more','More']].map(([act,i,label])=>`<button class="quick-action" data-act="${act}"><span class="quick-icon">${icon(i)}</span><span>${label}</span></button>`).join('')}</div>
   ${promo()}<h2 class="sr-only">Vos transactions</h2><div class="transactions recent-transactions">${recent.length?recent.map(txRow).join(''):'<div class="empty">Aucune transaction pour ce compte.</div>'}<button class="recent-more" data-act="all-transactions">See all</button></div>
-  <div class="section-title"><h2>Widgets</h2><button data-act="notifications" aria-label="Afficher les notifications">${icon('bell')}</button></div><div class="home-widgets"><button class="home-widget" data-act="expenses" data-period="month"><p>Spent this month</p><strong>${esc(money(metrics.expense))}</strong><small>Personal · EUR</small>${widgetSpendingChart(metrics)}</button><button class="home-widget" data-act="tab" data-id="savings"><p>Savings</p><strong>${esc(money(pockets))}</strong><small>${state.pockets.length} pockets</small><span class="widget-icons" aria-hidden="true"><span>${icon('pocket')}</span><span>${icon('plane')}</span><span>${icon('shield')}</span></span></button></div>
-  <div class="activity-foot">${icon('location')}<button data-act="location">${r.flag} ${esc(r.city)}</button></div>`;
+  <div class="section-title"><h2>Widgets</h2><button data-act="notifications" aria-label="Afficher les notifications">${icon('bell')}</button></div><div class="home-widgets"><button class="home-widget" data-act="expenses" data-period="month"><p>Spent this month</p><strong>${esc(money(metrics.expense))}</strong><small>Personal · EUR</small>${widgetSpendingChart(metrics)}</button><button class="home-widget" data-act="tab" data-id="savings"><p>Savings</p><strong>${esc(money(pockets))}</strong><small>${state.pockets.length} pockets</small><span class="widget-icons" aria-hidden="true"><span>${icon('pocket')}</span><span>${icon('plane')}</span><span>${icon('shield')}</span></span></button></div>`;
 }
 
 function cardVisual(extra=null) {
@@ -371,7 +370,6 @@ function accountDetailsSheet() {
 function profileSheet() {
   openSheet('Votre espace',`<div class="profile-button" style="margin:0 0 20px"><span class="avatar" style="width:57px;height:57px;border-radius:50%" data-i18n-skip>${esc(identity().initials)}</span><span><span style="display:block;font-size:17px;font-weight:600" data-i18n-skip>${esc(identity().name)}</span><span class="profile-caption" style="display:block" data-i18n-skip>@${esc(identity().handle)} · Plus</span></span></div><div class="panel">
   <button class="setting-row language-setting" data-act="language"><span class="setting-left">${icon('globe')}<span><span class="setting-name">Langue</span><span class="setting-description" data-i18n-skip>${getLanguage()==='fr'?'Français':'English'}</span></span></span>${icon('chevron')}</button>
-  <div class="setting-row"><span class="setting-left">${icon('moon')}<span><span class="setting-name">Mode sombre</span><span class="setting-description">Toujours activé</span></span></span><span class="setting-status">${icon('check')}</span></div>
   ${toggleRow('Activité quotidienne','Ajouts automatiques à l’ouverture de l’app','autoSimulation',state.autoSimulation,'repeat')}
   ${toggleRow('Notifications dans l’app','Informer des nouvelles opérations','notify',state.notify,'bell')}
   <button class="editor-launch" data-act="editor"><span class="setting-left">${icon('settings')}<span><span class="setting-name" style="display:block">Mode édition</span><span class="setting-description" style="display:block">Soldes, voyages et historique</span></span></span>${icon('chevron')}</button>
@@ -845,7 +843,7 @@ setInterval(()=>{
 },60000);
 window.addEventListener('offline',()=>toast('Mode hors ligne · votre espace reste disponible.'));
 window.addEventListener('online',()=>toast('Connexion rétablie.'));
-if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js?v=22').catch(()=>{});}
+if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js?v=23').catch(()=>{});}
 theme();persist();render();
 window.__flexReady=true;
 if(window.visualViewport){

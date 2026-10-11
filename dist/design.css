@@ -74,7 +74,6 @@ button{touch-action:manipulation}button:focus-visible{outline:2px solid #6498ff;
 .home-widget small{display:block;color:var(--sub);font-size:11px;margin-top:4px}
 .widget-line{width:100%;height:47px;margin-top:14px;color:#6498ff}
 .widget-icons{display:flex;gap:8px;margin-top:23px}.widget-icons>span{width:31px;height:31px;display:grid;place-items:center;border-radius:50%;background:#2b2b2b;color:#aaa}.widget-icons .icon{width:17px;height:17px}
-.activity-foot{margin:25px 0 0;font-size:12px}.activity-foot .icon{width:14px;height:14px}
 .nav{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) - 6px);width:min(calc(100% - 32px),468px);display:grid;grid-template-columns:repeat(6,minmax(0,1fr));height:62px;padding:3px 11px;margin:0;border-radius:34px;background:linear-gradient(180deg,#252525e8,#202020f0);border:1px solid #ffffff24;box-shadow:inset 0 1px 1px #ffffff12,inset 0 -1px 1px #ffffff09,0 0 0 1px #0005,0 9px 25px #0009;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);z-index:30}
 .nav-item{border-radius:29px;padding:4px 1px 3px;gap:4px;font-size:9.5px;font-weight:500;line-height:13px;color:#b5b5b5}
 .nav-item .icon{width:24px;height:24px;stroke-width:2.6}
@@ -297,23 +296,18 @@ html.ios-standalone{--app-header-inset:var(--iphone-status-height)}
   html .screen:has(> .back-heading){padding-top:calc(var(--app-header-top) + 67px)}
   html .screen:has(> .expenses-toolbar){--app-header-top:calc(max(var(--app-header-inset),44px) + 3px)}
   html.ios-standalone .screen:has(> .expenses-toolbar){--app-header-top:calc(var(--app-header-inset) + 2px)}
-  .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading){position:fixed;top:var(--app-header-top);left:0;right:0;width:min(100%,500px);padding:0 16px;height:44px;margin:0 auto;z-index:35;isolation:auto;background:var(--app-header-background);opacity:1;filter:none;backdrop-filter:none;-webkit-backdrop-filter:none}
-  .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading)::before{content:"";position:absolute;top:calc(0px - var(--app-header-top));bottom:100%;left:0;right:0;z-index:0;background:var(--app-header-background);pointer-events:none}
+  html .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading){position:fixed;top:var(--app-header-top);left:0;right:0;width:min(100%,500px);padding:0 16px;height:44px;margin:0 auto;z-index:35;isolation:auto;background:transparent;opacity:1;filter:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+  html .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading)::before{content:"";position:absolute;top:calc(0px - var(--app-header-top));bottom:0;left:0;right:0;z-index:-1;background:var(--app-header-background);pointer-events:none}
   .screen:has(> :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading)) [id]{scroll-margin-top:calc(var(--app-header-top) + 56px)}
 }
 @media(min-width:900px){
-  .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading){position:sticky;top:var(--app-header-top);width:calc(100% + 32px);margin-left:-16px;margin-right:-16px;padding-left:16px;padding-right:16px;z-index:35;isolation:auto;background:var(--app-header-background);opacity:1;filter:none;backdrop-filter:none;-webkit-backdrop-filter:none}
-  .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading)::before{content:"";position:absolute;top:calc(0px - var(--app-header-top));bottom:100%;left:0;right:0;z-index:0;background:var(--app-header-background);pointer-events:none}
+  html .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading){position:sticky;top:var(--app-header-top);width:calc(100% + 32px);margin-left:-16px;margin-right:-16px;padding-left:16px;padding-right:16px;z-index:35;isolation:auto;background:transparent;opacity:1;filter:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+  html .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading)::before{content:"";position:absolute;top:calc(0px - var(--app-header-top));bottom:0;left:0;right:0;z-index:-1;background:var(--app-header-background);pointer-events:none}
 }
 
-/* Filter the real header surface, with no opaque layer masking its backdrop. */
-.screen{--app-header-glass:rgba(0,0,0,.48)}
-.screen.analytics-screen{--app-header-glass:rgba(20,20,20,.55)}
-.screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading){transition:background-color .18s ease,box-shadow .18s ease}
-html.header-scrolled .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading){box-shadow:0 1px 0 rgba(255,255,255,.09)}
+/* The backdrop is a separate layer; controls and text stay sharp. */
+html .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading)::before{transition:background-color .18s ease}
 @supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
-  html.header-scrolled .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading){background:var(--app-header-glass);backdrop-filter:blur(24px) saturate(150%);-webkit-backdrop-filter:blur(24px) saturate(150%)}
-}
-@media(prefers-reduced-transparency:reduce){
-  html.header-scrolled .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading){background:var(--app-header-background);backdrop-filter:none;-webkit-backdrop-filter:none}
+  html.header-scrolled .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading)::before{bottom:-14px;background:rgba(12,12,12,.20);backdrop-filter:blur(22px) saturate(160%);-webkit-backdrop-filter:blur(22px) saturate(160%);mask-image:linear-gradient(to bottom,#000 calc(100% - 14px),transparent);-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 14px),transparent)}
+  html.header-scrolled .topbar :is(.header-search,.top-tools .icon-button),html.header-scrolled .screen > :is(.detail-toolbar,.expenses-toolbar,.back-heading) > .icon-button,html.header-scrolled .expenses-back{background:rgba(28,28,28,.46)}
 }
