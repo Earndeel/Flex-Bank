@@ -6,7 +6,7 @@ button,input,select,textarea{font-family:var(--font)}
 button{touch-action:manipulation}button:focus-visible{outline:2px solid #6498ff;outline-offset:3px}
 .phone-shell{width:100%;max-width:500px;min-height:100dvh;background:var(--bg);isolation:isolate;overflow:clip}
 #app{min-height:100dvh}
-.screen{position:relative;padding:calc(env(safe-area-inset-top) + 2px) 16px calc(98px + env(safe-area-inset-bottom));min-height:100dvh;background:var(--bg);}
+.screen{animation:none;position:relative;padding:calc(env(safe-area-inset-top) + 2px) 16px calc(98px + env(safe-area-inset-bottom));min-height:100dvh;background:var(--bg);}
 .icon{stroke-width:2.1}
 .sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .topbar{filter:none;backdrop-filter:none;-webkit-backdrop-filter:none;display:flex;align-items:center;gap:12px;margin:0;height:44px}
@@ -276,3 +276,12 @@ button{touch-action:manipulation}button:focus-visible{outline:2px solid #6498ff;
 @media(max-width:360px){.hero{height:282px;padding-top:0}.account-select{top:94px}.header-search{padding:0 9px;gap:6px}.quick-action{font-size:12px}}
 
 .nav-item.active{background:none;isolation:isolate}.nav-item.active:after{display:block;position:absolute;inset:0 -6px;width:auto;height:auto;border-radius:29px;background:#363636;z-index:-1}
+
+/* Installed iOS draws a native scroll-edge effect near the status bar.
+   A real fixed, opaque element at the viewport edge provides its backing.
+   Keep interactive content below that surface, including zero-inset devices. */
+#iphone-status-surface{display:none}
+html.ios-standalone{--iphone-status-height:max(env(safe-area-inset-top,0px),6px);background:#000}
+html.ios-standalone #iphone-status-surface{display:block;position:fixed;top:0;left:0;right:0;height:var(--iphone-status-height);background:#000;z-index:1201;pointer-events:none;filter:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+html.ios-standalone .screen{padding-top:calc(var(--iphone-status-height) + 2px);animation:none}
+html.ios-standalone .topbar{background:var(--bg);opacity:1;transform:none;filter:none;backdrop-filter:none;-webkit-backdrop-filter:none}

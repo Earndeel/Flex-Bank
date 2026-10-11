@@ -1,5 +1,11 @@
 // Keep the loading screen recoverable when scripts cannot be downloaded.
 (() => {
+  // Older iOS exposes navigator.standalone; newer installations can also
+  // report their display mode. Keep this workaround out of regular Safari.
+  const nav=window.navigator||globalThis.navigator||{};
+  const appleDevice=/iPhone|iPad|iPod/.test(nav.userAgent||'')||(nav.platform==='MacIntel'&&nav.maxTouchPoints>1);
+  const installed=nav.standalone===true||(appleDevice&&window.matchMedia?.('(display-mode: standalone)')?.matches);
+  document.documentElement.classList.toggle('ios-standalone',Boolean(installed));
   const splash=document.getElementById('app-splash');
   const caption=document.getElementById('splash-caption');
   const retry=document.getElementById('splash-retry');
