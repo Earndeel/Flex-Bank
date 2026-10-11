@@ -6,6 +6,15 @@
   const appleDevice=/iPhone|iPad|iPod/.test(nav.userAgent||'')||(nav.platform==='MacIntel'&&nav.maxTouchPoints>1);
   const installed=nav.standalone===true||(appleDevice&&window.matchMedia?.('(display-mode: standalone)')?.matches);
   document.documentElement.classList.toggle('ios-standalone',Boolean(installed));
+  // Frost only the background once content passes behind the pinned header.
+  const updateHeader=()=>{
+    const scrollTop=window.scrollY??document.scrollingElement?.scrollTop??0;
+    document.documentElement.classList.toggle('header-scrolled',scrollTop>8);
+  };
+  window.addEventListener('scroll',updateHeader,{passive:true});
+  window.addEventListener('pageshow',updateHeader);
+  window.addEventListener('flex:ready',updateHeader);
+  updateHeader();
   const splash=document.getElementById('app-splash');
   const caption=document.getElementById('splash-caption');
   const retry=document.getElementById('splash-retry');

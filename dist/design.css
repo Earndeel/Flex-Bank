@@ -305,3 +305,16 @@ html.ios-standalone{--app-header-inset:var(--iphone-status-height)}
   .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading){position:sticky;top:var(--app-header-top);z-index:35;isolation:isolate;background:var(--app-header-background);opacity:1;filter:none;backdrop-filter:none;-webkit-backdrop-filter:none}
   .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading)::before{content:"";position:absolute;top:calc(0px - var(--app-header-top));bottom:0;left:-16px;right:-16px;z-index:-1;background:var(--app-header-background);pointer-events:none}
 }
+
+/* The pinned controls remain crisp above the frosted scrolling background. */
+.screen{--app-header-glass:rgba(0,0,0,.66)}
+.screen.analytics-screen{--app-header-glass:rgba(20,20,20,.72)}
+.screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading)::before{transition:background-color .18s ease,box-shadow .18s ease;backdrop-filter:none;-webkit-backdrop-filter:none}
+html.header-scrolled .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading){background:transparent}
+html.header-scrolled .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading)::before{box-shadow:0 1px 0 rgba(255,255,255,.07)}
+@supports ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  html.header-scrolled .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading)::before{background:var(--app-header-glass);backdrop-filter:blur(20px) saturate(140%);-webkit-backdrop-filter:blur(20px) saturate(140%)}
+}
+@media(prefers-reduced-transparency:reduce){
+  html.header-scrolled .screen > :is(.topbar,.detail-toolbar,.expenses-toolbar,.back-heading)::before{background:var(--app-header-background);backdrop-filter:none;-webkit-backdrop-filter:none}
+}
