@@ -16,7 +16,7 @@ button:focus-visible,a:focus-visible{outline:3px solid #86a3f7;outline-offset:4p
 input,select,textarea{border:1px solid var(--line);border-radius:16px;background:var(--soft);color:var(--ink);width:100%;padding:16px;outline:none;font-size:16px}
 input:focus,select:focus,textarea:focus{border-color:var(--accent)}textarea{resize:vertical;min-height:90px}a{color:var(--accent)}h1,h2,h3,p{margin:0}svg{display:block;flex-shrink:0}.icon{width:22px;height:22px;stroke-width:1.7}small{font-size:11px}
 .phone-shell{position:relative;max-width:500px;min-height:100dvh;margin:auto;background:var(--bg);overflow:clip}
-#app{min-height:100dvh}.screen{padding:calc(env(safe-area-inset-top) + 20px) 24px calc(120px + env(safe-area-inset-bottom));animation:reveal .25s ease}
+#app{min-height:100dvh}.screen{padding:calc(env(safe-area-inset-top) + 20px) 24px calc(104px + env(safe-area-inset-bottom));animation:reveal .25s ease}
 .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:30px;gap:10px}
 .global-disclosure{font-size:10.5px;color:var(--sub);text-align:center;margin:-16px 0 24px;letter-spacing:.15px;line-height:1.5}
 .sheet-disclosure{display:inline-block;margin-left:9px;color:var(--sub);font-size:10px;vertical-align:middle;margin-bottom:20px}
