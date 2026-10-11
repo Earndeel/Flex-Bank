@@ -1,5 +1,5 @@
-const CACHE = 'flex-v12';
-const FILES = ['./setup.js?v=1','./reference-icons.js?v=2','./i18n.js?v=2','./icon.svg?v=9','./ui-metrics.js?v=2','./promo-travel.svg?v=1','./promo-card.svg?v=1','./promo-assets.svg?v=1','./design.css?v=12','./scenario.js?v=4','./editor.css?v=1','./expenses.js?v=4','./expenses.css?v=1','./','./index.html','./styles.css?v=9','./core.js?v=10','./app.js?v=12','./startup.js?v=10','./icon-192.png?v=9','./icon-512.png?v=9','./apple-touch-icon.png?v=9','./manifest.webmanifest?v=9'];
+const CACHE = 'flex-v13';
+const FILES = ['./setup.js?v=1','./reference-icons.js?v=2','./i18n.js?v=3','./icon.svg?v=10','./ui-metrics.js?v=2','./promo-travel.svg?v=1','./promo-card.svg?v=1','./promo-assets.svg?v=1','./design.css?v=12','./scenario.js?v=5','./editor.css?v=1','./expenses.js?v=4','./expenses.css?v=1','./','./index.html','./styles.css?v=10','./core.js?v=11','./app.js?v=13','./startup.js?v=11','./icon-192.png?v=10','./icon-512.png?v=10','./apple-touch-icon.png?v=10','./manifest.webmanifest?v=10'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(FILES)).then(()=>self.skipWaiting()));
 });

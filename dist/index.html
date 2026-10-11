@@ -7,8 +7,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Flex">
-  <meta name="description" content="Flex, espace de démonstration mobile avec comptes multidevises, cartes, épargne et montants fictifs.">
-  <title>Flex — Démonstration</title>
+  <meta name="description" content="Flex, espace mobile avec comptes multidevises, cartes, épargne et paiements.">
+  <title>Flex</title>
   <style>
     body{margin:0;background:#0a1019}
     .app-splash{position:fixed;inset:0;z-index:1000;background:#0f1213;color:#f2f5fa;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,sans-serif;transition:opacity .35s ease,visibility .35s ease}
@@ -17,7 +17,7 @@
     .splash-caption{font-size:11px;color:#8e9aad;margin-top:13px;text-align:center;line-height:1.7}
     .splash-track{height:2px;width:82px;overflow:hidden;background:#21352f;border-radius:2px;margin-top:25px}
     .splash-track span{height:100%;width:38px;background:#72d9b5;display:block;animation:splash-progress 1.2s ease-in-out infinite}
-    .splash-demo{font-size:8px;letter-spacing:1.5px;color:#64728a;position:absolute;bottom:calc(36px + env(safe-area-inset-bottom))}
+    .splash-tagline{font-size:8px;letter-spacing:1.5px;color:#64728a;position:absolute;bottom:calc(36px + env(safe-area-inset-bottom))}
     .splash-retry{background:#25344d;color:#c4d9fb;border:0;border-radius:12px;padding:12px 18px;margin-top:18px}
     .app-splash.splash-done{opacity:0;visibility:hidden;pointer-events:none}
     @keyframes splash-progress{0%{transform:translateX(-38px)}100%{transform:translateX(82px)}}
@@ -50,7 +50,7 @@
     <div id="sheet-root"></div>
     <div id="toast" role="status" aria-live="polite"></div>
   </div>
-   <footer class="global-disclosure" aria-label="Application de démonstration sans compte bancaire réel">Démonstration — aucun compte réel</footer>
+   <footer class="global-disclosure" aria-label="Flex, application bancaire" hidden></footer>
   <noscript><style>.app-splash{display:none}</style><p style="color:#fff">Active JavaScript pour ouvrir cette cette application.</p></noscript>
   <script src="./startup.js?v=10" defer></script>
   <script type="module" src="./app.js?v=12"></script>

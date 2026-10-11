@@ -1,8 +1,8 @@
-// All amounts are fictional. Ledger values use integer minor currency units.
+// Ledger values use integer minor currency units.
 export const FLOOR = 2300001;
 export const VERSION = 1;
 export const HISTORY_REVISION = 2;
-export const STORAGE_KEY = 'luma-demo-v1';
+export const STORAGE_KEY = 'flex-local-v1';
 export const PIN_HASH = '3f3523ac168330e6b429b23d2b25b6c6d7efaf564c1a9f1feaf5398d2bb45318';
 export const RATES = { EUR: 1, USD: 1.12, GBP: 0.85, EGP: 55.1, THB: 38.2 };
 export const CURRENCIES = {
@@ -37,7 +37,7 @@ export const CATEGORY_META = {
   exchange: { label: 'Change', icon: 'exchange', color: '#657bea' },
   topup: { label: 'Ajouts', icon: 'plus', color: '#37a381' }
 };
-// Merchant labels are illustrative: no visit or real payment is asserted.
+// Merchant labels are generated for the scenario generator.
 export const MERCHANTS = {
   aswan: {
     coffee:['Salah El Din','Al Nour Café','Nile Coffee House'],
@@ -215,23 +215,23 @@ function scenarioIncomeDay(key,requested) {
 }
 function scenarioCandidates(key,regionId,config) {
   const r=regionById(regionId),rng=random(config.seed+'-'+key+'-'+r.id),items=[],scale=config.monthlyExpenses/120000;
-  const common={currency:'EUR',region:r.id,city:r.city,automatic:true,demo:true,status:'completed',scenarioSeed:config.seed};
+  const common={currency:'EUR',region:r.id,city:r.city,automatic:true,status:'completed',scenarioSeed:config.seed};
   const templates=[['coffee',2.1,5.8,8,.83],['restaurant',8.2,22.6,12,.91],['transport',3.8,15.4,16,.51],['groceries',8.5,44.4,19,.41],['shopping',15.2,65.8,18,.11]];
   for(let i=0;i<templates.length;i++){
     const [category,min,max,hour,chance]=templates[i],chosen=rng()<chance,value=Math.round((min+rng()*(max-min))*r.cost*100*scale),minute=Math.floor(rng()*59);
-    if(chosen&&value>0)items.push({...common,id:'scenario-'+config.seed+'-'+key+'-'+i,timestamp:zonedStamp(key,hour,minute,r.tz),name:merchantLabel(config.seed+'-'+key,r.id,category),category,amount:-value,originalAmount:Math.round(value*RATES[r.currency]),originalCurrency:r.currency,method:'Carte de démonstration',note:'Démonstration — dépense générée pour le scénario'});
+    if(chosen&&value>0)items.push({...common,id:'scenario-'+config.seed+'-'+key+'-'+i,timestamp:zonedStamp(key,hour,minute,r.tz),name:merchantLabel(config.seed+'-'+key,r.id,category),category,amount:-value,originalAmount:Math.round(value*RATES[r.currency]),originalCurrency:r.currency,method:'Carte',note:'Dépense générée pour le scénario'});
   }
   const day=Number(key.slice(-2));
   const posts=config.incomeKind==='freelance'?
-    [{day:Math.max(1,Math.floor(config.incomeDay/2)),amount:Math.round(config.monthlyIncome*.4),name:'Mission A · Démonstration'},{day:config.incomeDay,amount:config.monthlyIncome-Math.round(config.monthlyIncome*.4),name:'Mission B · Démonstration'}]:
-    [{day:config.incomeDay,amount:config.monthlyIncome,name:config.incomeKind==='salary'?'Salaire · Démonstration':'Mission · Démonstration'}];
+    [{day:Math.max(1,Math.floor(config.incomeDay/2)),amount:Math.round(config.monthlyIncome*.4),name:'Mission A'},{day:config.incomeDay,amount:config.monthlyIncome-Math.round(config.monthlyIncome*.4),name:'Mission B'}]:
+    [{day:config.incomeDay,amount:config.monthlyIncome,name:config.incomeKind==='salary'?'Salaire':'Mission'}];
   posts.forEach((post,i)=>{
-    if(post.amount>0&&day===scenarioIncomeDay(key,post.day))items.push({...common,id:'scenario-'+config.seed+'-'+key+'-income-'+i,timestamp:zonedStamp(key,9,17+i*13,r.tz),name:post.name,category:'income',amount:post.amount,originalCurrency:'EUR',method:'Virement de démonstration',note:'Démonstration — revenu mensuel généré'});
+    if(post.amount>0&&day===scenarioIncomeDay(key,post.day))items.push({...common,id:'scenario-'+config.seed+'-'+key+'-income-'+i,timestamp:zonedStamp(key,9,17+i*13,r.tz),name:post.name,category:'income',amount:post.amount,originalCurrency:'EUR',method:'Virement',note:'Revenu mensuel'});
   });
   const sub={3:['Spotify Premium',1099],10:['Apple · iCloud+',299],18:['Adobe · Creative Cloud',1299]}[day];
   if(sub&&scale>0){
     const value=Math.round(sub[1]*scale);
-    if(value>0)items.push({...common,id:'scenario-'+config.seed+'-'+key+'-sub',timestamp:zonedStamp(key,10,4,r.tz),name:sub[0],category:'subscription',amount:-value,originalCurrency:'EUR',method:'Carte de démonstration',note:'Démonstration — abonnement généré'});
+    if(value>0)items.push({...common,id:'scenario-'+config.seed+'-'+key+'-sub',timestamp:zonedStamp(key,10,4,r.tz),name:sub[0],category:'subscription',amount:-value,originalCurrency:'EUR',method:'Carte',note:'Abonnement généré'});
   }
   return items.sort((a,b)=>a.timestamp.localeCompare(b.timestamp));
 }
@@ -255,9 +255,9 @@ export function initialState(now = new Date(), {generateHistory=true} = {}) {
     transactions:[], lastGeneratedDate:shiftDay(start,-1),
     cards:{ frozen:false, online:true, international:true, dailyLimit:50000, last4:'0428', type:'virtual' },
     contacts:[
-      {id:'c1',name:'Paul',initials:'P',color:'#dfecf8',handle:'paul.demo'},
-      {id:'c2',name:'Camille',initials:'C',color:'#f4e6da',handle:'camille.demo'},
-      {id:'c3',name:'Alex',initials:'A',color:'#e6e3f8',handle:'alex.demo'}
+      {id:'c1',name:'Paul',initials:'P',color:'#dfecf8',handle:'paul.flex'},
+      {id:'c2',name:'Camille',initials:'C',color:'#f4e6da',handle:'camille.flex'},
+      {id:'c3',name:'Alex',initials:'A',color:'#e6e3f8',handle:'alex.flex'}
     ],
     pockets:[
       {id:'p1',name:'Prochain voyage',icon:'plane',balance:78000,target:200000,color:'#e7edf9'},

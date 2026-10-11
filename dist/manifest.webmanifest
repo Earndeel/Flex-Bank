@@ -1,7 +1,7 @@
 {
-  "name": "Flex — Démonstration",
+  "name": "Flex",
   "short_name": "Flex",
-  "description": "Comptes, cartes, paiements et épargne fictifs.",
+  "description": "Comptes, cartes, paiements et épargne.",
   "id": "./",
   "start_url": "./",
   "scope": "./",
