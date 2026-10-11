@@ -333,6 +333,27 @@ test('les nouveaux formulaires d’édition suivent le choix anglais ou françai
   await click('select-language','fr');await click('editor');assert.match(sheet(),/Gérer les dépenses/);await click('editor-exit');
 });
 
+test('fiche dépense : modifier directement sans activer le mode édition, puis revenir et annuler',async()=>{
+  await click('select-language','fr');await click('editor-exit');
+  const before=saved(),tx=before.transactions.find(tx=>tx.amount<0&&tx.status==='completed'&&!['exchange','savings'].includes(tx.category));assert.ok(tx);
+  await click('transaction',tx.id);assert.match(sheet(),/Modifier la dépense/);assert.match(sheet(),/Supprimer cette dépense/);assert.doesNotMatch(app(),/editor-banner/);assert.deepEqual(saved(),before);
+  await click('editor-expense-edit',tx.id);assert.match(sheet(),/id="editor-expense-form"/);assert.match(sheet(),/Retour à la dépense/);assert.doesNotMatch(app(),/editor-banner/);
+  const fields={name:tx.name,amount:'18,76',currency:tx.currency,category:tx.category,region:tx.region,timestamp:tx.timestamp,note:tx.note||''};
+  await submit('editor-expense-form',{...fields,amount:'0'},{expense:tx.id});assert.deepEqual(saved(),before);
+  await submit('editor-expense-form',fields,{expense:tx.id});assert.equal(saved().transactions.find(item=>item.id===tx.id).amount,-1876);assert.deepEqual(saved().wallets,before.wallets);assert.match(sheet(),/Détails de la transaction/);assert.match(sheet(),/Annuler le dernier changement/);assert.doesNotMatch(app(),/editor-banner/);
+  await click('editor-undo');assert.deepEqual(saved(),before);assert.match(sheet(),/Modifier la dépense/);assert.doesNotMatch(app(),/editor-banner/);
+  await click('editor-expense-edit',tx.id);await click('close-sheet');await submit('editor-expense-form',fields,{expense:tx.id});assert.deepEqual(saved(),before);
+});
+test('fiche dépense : suppression directe avec confirmation, annulation et restauration',async()=>{
+  const before=saved(),tx=before.transactions.find(tx=>tx.amount<0&&tx.status==='completed'&&!['exchange','savings'].includes(tx.category));assert.ok(tx);
+  await click('transaction',tx.id);await click('editor-expense-delete',tx.id);assert.match(sheet(),/Supprimer la dépense/);assert.deepEqual(saved(),before);assert.match(sheet(),new RegExp('data-act="transaction" data-id="'+tx.id+'"'));assert.doesNotMatch(app(),/editor-banner/);
+  await click('transaction',tx.id);assert.deepEqual(saved(),before);await click('editor-expense-delete',tx.id);await click('editor-expense-delete-confirm',tx.id);
+  assert.equal(saved().transactions.some(item=>item.id===tx.id),false);assert.ok(saved().deletedExpenseIds.includes(tx.id));assert.deepEqual(saved().wallets,before.wallets);assert.match(sheet(),/Dépense supprimée/);assert.match(sheet(),/Annuler le dernier changement/);assert.doesNotMatch(app(),/editor-banner/);
+  await click('editor-undo');assert.deepEqual(saved(),before);assert.match(sheet(),/Détails de la transaction/);assert.doesNotMatch(app(),/editor-banner/);
+  const income=saved().transactions.find(tx=>tx.amount>0);assert.ok(income);await click('transaction',income.id);assert.doesNotMatch(sheet(),/data-act="editor-expense-(edit|delete)"/);await click('editor-expense-edit',income.id);assert.deepEqual(saved(),before);
+  await click('close-sheet');
+});
+
 test('export CSV, données valides et verrouillage final',async()=>{
   await click('export');
   assert.match(download.at(-1),/^Flex-DEMO-transactions-/);

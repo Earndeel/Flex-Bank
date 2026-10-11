@@ -1,16 +1,16 @@
 import {REFERENCE_ICONS} from './reference-icons.js?v=2';
-import {getLanguage,getLocale,setLanguage,tr,localizeHTML} from './i18n.js?v=3';
+import {getLanguage,getLocale,setLanguage,tr,localizeHTML} from './i18n.js?v=4';
 import {
   FLOOR,STORAGE_KEY,PIN_HASH,RATES,CURRENCIES,REGIONS,CATEGORY_META,
   initialState,assertState,rollForward,dateKey,shiftDay,regionById,regionFromCoordinates,
   sendMoney,topUp,exchange,pocketMove,monthMetrics,formatMoney,parseMoney,applyTransaction
 } from './core.js?v=11';
 import {expenseMetrics,analyticsBreakdownMetrics,renderExpenseSummary,shiftExpensePeriod} from './expenses.js?v=4';
-import {isEditableExpense,formatIban,localDateTime,saveExpense,deleteExpense,changeAccountIban,renderEditorTools,renderExpenseList,renderExpenseForm,renderIbanForm} from './expense-editor.js?v=1';
+import {isEditableExpense,formatIban,localDateTime,saveExpense,deleteExpense,changeAccountIban,renderEditorTools,renderExpenseList,renderExpenseForm,renderIbanForm} from './expense-editor.js?v=2';
 import {SCENARIO_FIELDS,scenarioDefaults,scenarioFingerprint,regenerateScenario,changeScenarioBalances,renderScenarioEditor} from './scenario.js?v=5';
 
 import {displayMoney,dashboardMetrics,periodRange,creditProjection,EXPENSE_COLORS} from './ui-metrics.js?v=2';
-import {setupDefaults,restoreProfile,profileIdentity,readSetupDraft,addSetupStop,createSetupState,renderSetup} from './setup.js?v=2';
+import {setupDefaults,restoreProfile,profileIdentity,readSetupDraft,addSetupStop,createSetupState,renderSetup} from './setup.js?v=3';
 
 const ICONS = {
   brandHome:'<path d="M7 21V4h12M7 11h9" stroke-width="3.5"/>',
@@ -83,7 +83,7 @@ let activeMonth=dateKey(new Date()).slice(0,7),showCard=false,hiddenAt=0,lastAct
 let expensesScope='spending';
 let expensesPeriod='year',expensesAnchor='',expensesMode='donut',expensesCategory='',expensesLimit=20;
 let editMode=false,editorDraft=null,editorUndo=null,editorNotice='';
-let editorExpenseCurrency='EUR',editorExpenseLimit=30;
+let editorExpenseCurrency='EUR',editorExpenseLimit=30,directExpenseId=null;
 const root=document.getElementById('app'),sheetRoot=document.getElementById('sheet-root');
 const localizedMoney=(amount,currency='EUR')=>displayMoney(amount,currency,{locale:getLocale()});
 const money=(amount,currency='EUR')=>state.hideBalance?'••••':localizedMoney(amount,currency);
@@ -319,12 +319,13 @@ function render() {
   root.innerHTML=localizeHTML(`<section class="screen ${screenName}-screen">${editMode?editorBanner:''}${content}${editMode?'':disclosure}${!storageAvailable?'<div class="info-box neutral">Les données ne peuvent pas être sauvegardées dans ce navigateur.</div>':''}</section>${view==='main'&&tab!=='analytics'?nav():''}`);
 }
 function openSheet(title,content) {
+  directExpenseId=null;
   previousFocus=document.activeElement;
   sheetRoot.innerHTML=localizeHTML(`<div class="sheet-backdrop"><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1"><div class="sheet-handle"></div><div class="sheet-header"><h2 id="sheet-title">${esc(title)}</h2><button class="icon-button" data-act="close-sheet" aria-label="Fermer">${icon('close')}</button></div>${content}</section></div>`);
   document.body.style.overflow='hidden';
   setTimeout(()=>sheetRoot.querySelector('input:not([type=range]),select,button,.sheet')?.focus(),60);
 }
-function closeSheet() {sheetRoot.innerHTML='';document.body.style.overflow='';if(previousFocus?.isConnected)previousFocus.focus();}
+function closeSheet() {directExpenseId=null;sheetRoot.innerHTML='';document.body.style.overflow='';if(previousFocus?.isConnected)previousFocus.focus();}
 function error(message) {const el=document.getElementById('form-error');if(el){el.textContent=tr(message);el.scrollIntoView({block:'nearest'});}else toast(message);}
 const errorHTML=()=>'<p id="form-error" class="form-error" role="alert"></p>';
 const currencyOptions=(selected)=>Object.keys(CURRENCIES).map(c=>`<option value="${c}" ${selected===c?'selected':''}>${CURRENCIES[c].flag} ${c}</option>`).join('');
@@ -357,7 +358,7 @@ function transactionSheet(id) {
   const t=state.transactions.find(t=>t.id===id);if(!t)return;
   const c=categoryMeta(t),amount=t.status==='declined'?t.attemptedAmount:t.amount;
   const stamp=new Intl.DateTimeFormat(getLocale(),{timeZone:regionById(t.region).tz,dateStyle:'long',timeStyle:'short'}).format(new Date(t.timestamp));
-  openSheet('Détails de la transaction',`<div class="detail-hero"><div class="tx-icon" style="background:${c.color}17;color:${c.color}">${icon(c.icon)}</div><p data-i18n-skip>${esc(t.name)}</p><h3 class="${amount>0?'positive':''}">${amount>0?'+':''}${esc(money(amount,t.currency))}</h3><p>${t.status==='declined'?'Paiement refusé':'Transaction · Terminée'}</p></div><div class="details-list">${detailsRow('Date',stamp)}${detailsRow('Lieu',t.city||'En ligne')}${detailsRow('Catégorie',c.label)}${detailsRow('Méthode',t.method||'—')}${t.originalAmount&&t.originalCurrency!==t.currency?detailsRow('Montant local',state.hideBalance?'••••':localizedMoney(t.originalAmount,t.originalCurrency)):''}${detailsRow('Solde après opération',money(t.balanceAfter,t.currency))}${t.note?detailsRow('Message',t.note):''}${detailsRow('Référence','FLEX-'+t.id.slice(-12).toUpperCase())}</div>${editMode&&isEditableExpense(t)?`<button class="primary-button" data-act="editor-expense-edit" data-id="${esc(t.id)}">Modifier la dépense</button><button class="secondary-button danger-button" data-act="editor-expense-delete" data-id="${esc(t.id)}">Supprimer cette dépense</button>`:''}<button class="primary-button" data-act="close-sheet">Fermer</button>`);
+  openSheet('Détails de la transaction',`<div class="detail-hero"><div class="tx-icon" style="background:${c.color}17;color:${c.color}">${icon(c.icon)}</div><p data-i18n-skip>${esc(t.name)}</p><h3 class="${amount>0?'positive':''}">${amount>0?'+':''}${esc(money(amount,t.currency))}</h3><p>${t.status==='declined'?'Paiement refusé':'Transaction · Terminée'}</p></div>${isEditableExpense(t)?`<div class="expense-detail-actions"><button class="primary-button" data-act="editor-expense-edit" data-id="${esc(t.id)}">Modifier la dépense</button><button class="secondary-button danger-button" data-act="editor-expense-delete" data-id="${esc(t.id)}">Supprimer cette dépense</button></div>`:''}<div class="details-list">${detailsRow('Date',stamp)}${detailsRow('Lieu',t.city||'En ligne')}${detailsRow('Catégorie',c.label)}${detailsRow('Méthode',t.method||'—')}${t.originalAmount&&t.originalCurrency!==t.currency?detailsRow('Montant local',state.hideBalance?'••••':localizedMoney(t.originalAmount,t.originalCurrency)):''}${detailsRow('Solde après opération',money(t.balanceAfter,t.currency))}${t.note?detailsRow('Message',t.note):''}${detailsRow('Référence','FLEX-'+t.id.slice(-12).toUpperCase())}</div>${!editMode&&editorUndo?.expenseId===t.id?'<button class="secondary-button" data-act="editor-undo">Annuler le dernier changement</button>':''}<button class="primary-button" data-act="close-sheet">Fermer</button>`);
 }
 function accountDetailsSheet() {
   const isEUR=state.currency==='EUR';
@@ -395,11 +396,15 @@ function captureEditorUndo() {
 function requireEditMode() {
   if(!editMode)throw new Error('Active le mode édition avant d’enregistrer un scénario.');
 }
-function commitEditorChange(candidate,notice) {
-  requireEditMode();
+function requireExpenseEdit(id) {
+  if(editMode)return;
+  if(!id||directExpenseId!==id)throw new Error('Active le mode édition avant d’enregistrer un scénario.');
+}
+function commitEditorChange(candidate,notice,expenseId) {
+  if(expenseId)requireExpenseEdit(expenseId);else requireEditMode();
   if(!assertState(candidate))throw new Error('Le scénario n’a pas pu être validé. Aucune donnée n’a été modifiée.');
   const fields=captureEditorUndo();
-  state=candidate;editorUndo={fields,fingerprint:scenarioFingerprint(state)};editorNotice=notice;
+  state=candidate;editorUndo={fields,fingerprint:scenarioFingerprint(state),expenseId:!editMode?expenseId:null};editorNotice=notice;
   editorDraft=scenarioDefaults(state);persist();render();
 }
 function preserveEditorDraft() {
@@ -410,16 +415,20 @@ function editorExpensesSheet() {
   openSheet('Gérer les dépenses',renderExpenseList(state,{currency:editorExpenseCurrency,limit:editorExpenseLimit,locale:getLocale(),notice:editorNotice,canUndo:!!editorUndo}));
 }
 function expenseEditorSheet(id) {
-  requireEditMode();
-  openSheet(id?'Modifier la dépense':'Nouvelle dépense',renderExpenseForm(state,{id,currency:editorExpenseCurrency,errorHTML:errorHTML()}));
+  const direct=!editMode;
+  if(direct&&!isEditableExpense(state.transactions.find(tx=>tx.id===id)))throw new Error('Cette dépense est introuvable ou ne peut pas être modifiée.');
+  if(!id)requireEditMode();
+  openSheet(id?'Modifier la dépense':'Nouvelle dépense',renderExpenseForm(state,{id,currency:editorExpenseCurrency,errorHTML:errorHTML(),returnToExpense:direct}));
+  if(direct)directExpenseId=id;
 }
 function ibanEditorSheet() {
   requireEditMode();openSheet('Modifier l’IBAN',renderIbanForm(eurAccountIban(),{errorHTML:errorHTML()}));
 }
 function deleteExpenseSheet(id) {
-  requireEditMode();const tx=state.transactions.find(tx=>tx.id===id);
+  const direct=!editMode,tx=state.transactions.find(tx=>tx.id===id);
   if(!isEditableExpense(tx))throw new Error('Cette dépense est introuvable ou ne peut pas être supprimée.');
-  openSheet('Supprimer cette dépense',`<p class="sheet-sub">Cette dépense sera retirée de l’historique et des totaux d’Analytics. Le solde affiché reste inchangé.</p><div class="editor-delete-summary"><strong data-i18n-skip>${esc(tx.name)}</strong><span data-i18n-skip>${esc(localizedMoney(tx.amount,tx.currency))}</span></div>${errorHTML()}<button class="primary-button editor-delete-confirm" data-act="editor-expense-delete-confirm" data-id="${esc(id)}">Supprimer la dépense</button><button class="secondary-button" data-act="editor-expenses">Annuler</button>`);
+  openSheet('Supprimer cette dépense',`<p class="sheet-sub">Cette dépense sera retirée de l’historique et des totaux d’Analytics. Le solde affiché reste inchangé.</p><div class="editor-delete-summary"><strong data-i18n-skip>${esc(tx.name)}</strong><span data-i18n-skip>${esc(localizedMoney(tx.amount,tx.currency))}</span></div>${errorHTML()}<button class="primary-button editor-delete-confirm" data-act="editor-expense-delete-confirm" data-id="${esc(id)}">Supprimer la dépense</button><button class="secondary-button" data-act="${direct?'transaction':'editor-expenses'}" ${direct?`data-id="${esc(id)}"`:''}>Annuler</button>`);
+  if(direct)directExpenseId=id;
 }
 function locationSheet() {
   openSheet('Votre localisation',`<p class="sheet-sub">La région détermine les nouveaux libellés de commerces, la devise locale et les horaires. Les anciens paiements conservent leur lieu.</p><button class="primary-button" data-act="geolocate">${icon('location')}Utiliser ma position</button><p style="font-size:11px;color:var(--sub);margin:22px 0 12px">OU CHOISIR UNE VILLE</p><div class="transactions">${REGIONS.map(r=>`<button class="tx-row" data-act="select-location" data-id="${r.id}"><span style="font-size:24px;width:33px">${r.flag}</span><span class="tx-body"><span class="tx-name" style="display:block">${r.city}</span><span class="tx-sub" style="display:block">${r.country} · ${r.currency}</span></span>${currentRegion().id===r.id?icon('check'):icon('chevron')}</button>`).join('')}</div><p class="pocket-footnote">La position sert uniquement à choisir une région.<br>Les coordonnées exactes ne sont ni stockées ni envoyées par Flex.</p>`);
@@ -615,7 +624,11 @@ document.addEventListener('click',async event=>{
       case'editor-expense-new':expenseEditorSheet();break;
       case'editor-expense-edit':expenseEditorSheet(id);break;
       case'editor-expense-delete':deleteExpenseSheet(id);break;
-      case'editor-expense-delete-confirm':requireEditMode();commitEditorChange(deleteExpense(state,id),'Dépense supprimée.');editorExpensesSheet();break;
+      case'editor-expense-delete-confirm':{
+        requireExpenseEdit(id);const direct=!editMode;
+        commitEditorChange(deleteExpense(state,id),'Dépense supprimée.',id);
+        if(direct)openSheet('Dépense supprimée.',`<p class="sheet-sub">${esc(editorNotice)}</p><button class="primary-button" data-act="editor-undo">Annuler le dernier changement</button><button class="secondary-button" data-act="close-sheet">Fermer</button>`);else editorExpensesSheet();break;
+      }
       case'editor-expense-currency':requireEditMode();if(Object.hasOwn(RATES,id)){editorExpenseCurrency=id;editorExpenseLimit=30;editorExpensesSheet();}break;
       case'editor-expense-more':requireEditMode();editorExpenseLimit+=30;editorExpensesSheet();break;
       case'editor-iban':preserveEditorDraft();ibanEditorSheet();break;
@@ -632,8 +645,9 @@ document.addEventListener('click',async event=>{
       case'editor-undo':{
         if(!editorUndo)break;
         if(scenarioFingerprint(state)!==editorUndo.fingerprint)throw new Error('L’activité a changé depuis cette édition. Annulation indisponible pour préserver les nouvelles opérations.');
+        const returnExpenseId=editorUndo.expenseId;
         for(const field of editorUndo.fields){if(field.present)state[field.key]=JSON.parse(JSON.stringify(field.value));else delete state[field.key];}
-        editorUndo=null;editorNotice='Le dernier changement a été annulé.';editorDraft=scenarioDefaults(state);persist();render();editorSheet();break;
+        editorUndo=null;editorNotice='Le dernier changement a été annulé.';editorDraft=scenarioDefaults(state);persist();render();if(!editMode&&returnExpenseId){transactionSheet(returnExpenseId);toast(editorNotice);}else editorSheet();break;
       }
       case'topup':topupSheet();break;
       case'set-amount':{const input=document.querySelector('#sheet-root #amount');if(input){input.value=id;input.dispatchEvent(new Event('input',{bubbles:true}));}break;}
@@ -729,11 +743,11 @@ document.addEventListener('submit',async event=>{
         preview.cash=next;savePreview();closeSheet();render();toast('Trésorerie mise à jour.');break;
       }
       case'editor-expense-form':{
-        requireEditMode();const id=form.dataset.expense||undefined,previous=id?state.transactions.find(tx=>tx.id===id):null;
+        const id=form.dataset.expense||undefined;requireExpenseEdit(id);const direct=!editMode,previous=id?state.transactions.find(tx=>tx.id===id):null;
         const stamp=String(f.get('timestamp'));
         const timestamp=previous&&stamp===localDateTime(previous.timestamp)?previous.timestamp:stamp;
         const candidate=saveExpense(state,{id:'manual-editor-'+crypto.randomUUID(),name:f.get('name'),amount:cents,currency:String(f.get('currency')),category:String(f.get('category')),region:String(f.get('region')),timestamp,note:f.get('note')},{id});
-        editorExpenseCurrency=String(f.get('currency'));commitEditorChange(candidate,id?'Dépense modifiée.':'Dépense créée.');editorExpensesSheet();break;
+        editorExpenseCurrency=String(f.get('currency'));commitEditorChange(candidate,id?'Dépense modifiée.':'Dépense créée.',id);if(direct){transactionSheet(id);toast(editorNotice);}else editorExpensesSheet();break;
       }
       case'editor-iban-form':requireEditMode();commitEditorChange(changeAccountIban(state,f.get('iban')),'IBAN enregistré.');editorSheet();break;
       case'scenario-form':{
@@ -823,7 +837,7 @@ setInterval(()=>{
 },60000);
 window.addEventListener('offline',()=>toast('Mode hors ligne · votre espace reste disponible.'));
 window.addEventListener('online',()=>toast('Connexion rétablie.'));
-if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js?v=20').catch(()=>{});}
+if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js?v=21').catch(()=>{});}
 theme();persist();render();
 window.__flexReady=true;
 if(window.visualViewport){
