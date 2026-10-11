@@ -1,5 +1,5 @@
 import {REFERENCE_ICONS} from './reference-icons.js?v=2';
-import {getLanguage,getLocale,setLanguage,tr,localizeHTML} from './i18n.js?v=4';
+import {getLanguage,getLocale,setLanguage,tr,localizeHTML} from './i18n.js?v=5';
 import {
   FLOOR,STORAGE_KEY,PIN_HASH,RATES,CURRENCIES,REGIONS,CATEGORY_META,
   initialState,assertState,rollForward,dateKey,shiftDay,regionById,regionFromCoordinates,
@@ -10,7 +10,7 @@ import {isEditableExpense,formatIban,localDateTime,saveExpense,deleteExpense,cha
 import {SCENARIO_FIELDS,scenarioDefaults,scenarioFingerprint,regenerateScenario,changeScenarioBalances,renderScenarioEditor} from './scenario.js?v=5';
 
 import {displayMoney,dashboardMetrics,periodRange,creditProjection,EXPENSE_COLORS} from './ui-metrics.js?v=2';
-import {setupDefaults,restoreProfile,profileIdentity,readSetupDraft,addSetupStop,createSetupState,renderSetup} from './setup.js?v=3';
+import {setupDefaults,restoreProfile,profileIdentity,readSetupDraft,addSetupStop,createSetupState,renderSetup} from './setup.js?v=4';
 
 const ICONS = {
   brandHome:'<path d="M7 21V4h12M7 11h9" stroke-width="3.5"/>',
@@ -318,10 +318,12 @@ function render() {
   const screenName=view==='analytics-overview'?'analytics':view==='main'?tab:view;
   root.innerHTML=localizeHTML(`<section class="screen ${screenName}-screen">${editMode?editorBanner:''}${content}${editMode?'':disclosure}${!storageAvailable?'<div class="info-box neutral">Les données ne peuvent pas être sauvegardées dans ce navigateur.</div>':''}</section>${view==='main'&&tab!=='analytics'?nav():''}`);
 }
-function openSheet(title,content) {
+function openSheet(title,content,headerActions='') {
   directExpenseId=null;
   previousFocus=document.activeElement;
-  sheetRoot.innerHTML=localizeHTML(`<div class="sheet-backdrop"><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1"><div class="sheet-handle"></div><div class="sheet-header"><h2 id="sheet-title">${esc(title)}</h2><button class="icon-button" data-act="close-sheet" aria-label="Fermer">${icon('close')}</button></div>${content}</section></div>`);
+  const closeButton=`<button class="icon-button" data-act="close-sheet" aria-label="Fermer">${icon('close')}</button>`;
+  const headerControls=headerActions?`<div class="sheet-header-actions">${headerActions}${closeButton}</div>`:closeButton;
+  sheetRoot.innerHTML=localizeHTML(`<div class="sheet-backdrop"><section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" tabindex="-1"><div class="sheet-handle"></div><div class="sheet-header"><h2 id="sheet-title">${esc(title)}</h2>${headerControls}</div>${content}</section></div>`);
   document.body.style.overflow='hidden';
   setTimeout(()=>sheetRoot.querySelector('input:not([type=range]),select,button,.sheet')?.focus(),60);
 }
@@ -358,7 +360,8 @@ function transactionSheet(id) {
   const t=state.transactions.find(t=>t.id===id);if(!t)return;
   const c=categoryMeta(t),amount=t.status==='declined'?t.attemptedAmount:t.amount;
   const stamp=new Intl.DateTimeFormat(getLocale(),{timeZone:regionById(t.region).tz,dateStyle:'long',timeStyle:'short'}).format(new Date(t.timestamp));
-  openSheet('Détails de la transaction',`<div class="detail-hero"><div class="tx-icon" style="background:${c.color}17;color:${c.color}">${icon(c.icon)}</div><p data-i18n-skip>${esc(t.name)}</p><h3 class="${amount>0?'positive':''}">${amount>0?'+':''}${esc(money(amount,t.currency))}</h3><p>${t.status==='declined'?'Paiement refusé':'Transaction · Terminée'}</p></div>${isEditableExpense(t)?`<div class="expense-detail-actions"><button class="primary-button" data-act="editor-expense-edit" data-id="${esc(t.id)}">Modifier la dépense</button><button class="secondary-button danger-button" data-act="editor-expense-delete" data-id="${esc(t.id)}">Supprimer cette dépense</button></div>`:''}<div class="details-list">${detailsRow('Date',stamp)}${detailsRow('Lieu',t.city||'En ligne')}${detailsRow('Catégorie',c.label)}${detailsRow('Méthode',t.method||'—')}${t.originalAmount&&t.originalCurrency!==t.currency?detailsRow('Montant local',state.hideBalance?'••••':localizedMoney(t.originalAmount,t.originalCurrency)):''}${detailsRow('Solde après opération',money(t.balanceAfter,t.currency))}${t.note?detailsRow('Message',t.note):''}${detailsRow('Référence','FLEX-'+t.id.slice(-12).toUpperCase())}</div>${!editMode&&editorUndo?.expenseId===t.id?'<button class="secondary-button" data-act="editor-undo">Annuler le dernier changement</button>':''}<button class="primary-button" data-act="close-sheet">Fermer</button>`);
+  const actions=isEditableExpense(t)?`<details class="expense-detail-menu"><summary class="icon-button" aria-label="Options de la dépense">${icon('more')}</summary><div class="expense-detail-dropdown" role="group" aria-label="Actions de la dépense"><button data-act="editor-expense-edit" data-id="${esc(t.id)}">Modifier la dépense</button><button class="expense-menu-danger" data-act="editor-expense-delete" data-id="${esc(t.id)}">Supprimer cette dépense</button>${!editMode&&editorUndo?.expenseId===t.id?'<button data-act="editor-undo">Annuler le dernier changement</button>':''}</div></details>`:'';
+  openSheet('Détails de la transaction',`<div class="detail-hero"><div class="tx-icon" style="background:${c.color}17;color:${c.color}">${icon(c.icon)}</div><p data-i18n-skip>${esc(t.name)}</p><h3 class="${amount>0?'positive':''}">${amount>0?'+':''}${esc(money(amount,t.currency))}</h3><p>${t.status==='declined'?'Paiement refusé':'Transaction · Terminée'}</p></div><div class="details-list">${detailsRow('Date',stamp)}${detailsRow('Lieu',t.city||'En ligne')}${detailsRow('Catégorie',c.label)}${detailsRow('Méthode',t.method||'—')}${t.originalAmount&&t.originalCurrency!==t.currency?detailsRow('Montant local',state.hideBalance?'••••':localizedMoney(t.originalAmount,t.originalCurrency)):''}${detailsRow('Solde après opération',money(t.balanceAfter,t.currency))}${t.note?detailsRow('Message',t.note):''}${detailsRow('Référence','FLEX-'+t.id.slice(-12).toUpperCase())}</div><button class="primary-button" data-act="close-sheet">Fermer</button>`,actions);
 }
 function accountDetailsSheet() {
   const isEUR=state.currency==='EUR';
@@ -554,6 +557,7 @@ function expensePeriodSheet() {
 }
 document.addEventListener('click',async event=>{
   lastActive=Date.now();
+  for(const menu of sheetRoot.querySelectorAll('.expense-detail-menu[open]'))if(!menu.contains(event.target))menu.open=false;
   if(event.target.classList.contains('sheet-backdrop')){closeSheet();return;}
   const b=event.target.closest('[data-act]');if(!b||b.disabled)return;
   const act=b.dataset.act,id=b.dataset.id;
@@ -812,9 +816,13 @@ document.addEventListener('keydown',event=>{
     if(/^\d$/.test(event.key)){event.preventDefault();pinInput(event.key);}
     else if(event.key==='Backspace'){event.preventDefault();pin=pin.slice(0,-1);render();}
   }
-  if(event.key==='Escape'&&sheetRoot.firstChild){closeSheet();return;}
+  if(event.key==='Escape'){
+    const menu=sheetRoot.querySelector('.expense-detail-menu[open]');
+    if(menu){menu.open=false;event.preventDefault();menu.querySelector('summary')?.focus();return;}
+    if(sheetRoot.firstChild){closeSheet();return;}
+  }
   if(event.key==='Tab'&&sheetRoot.firstChild){
-    const focusable=[...sheetRoot.querySelectorAll('button:not([disabled]),input:not([disabled]),select,textarea,[tabindex="0"]')],first=focusable[0],last=focusable.at(-1);
+    const focusable=[...sheetRoot.querySelectorAll('button:not([disabled]),summary,input:not([disabled]),select,textarea,[tabindex="0"]')],first=focusable[0],last=focusable.at(-1);
     if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}
     else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
   }
@@ -837,7 +845,7 @@ setInterval(()=>{
 },60000);
 window.addEventListener('offline',()=>toast('Mode hors ligne · votre espace reste disponible.'));
 window.addEventListener('online',()=>toast('Connexion rétablie.'));
-if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js?v=21').catch(()=>{});}
+if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js?v=22').catch(()=>{});}
 theme();persist();render();
 window.__flexReady=true;
 if(window.visualViewport){

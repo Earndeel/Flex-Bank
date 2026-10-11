@@ -1,6 +1,6 @@
 import {FLOOR,RATES,REGIONS,initialState,assertState,migrateState,parseMoney,dateKey,shiftDay,threeMonthsAgo,regionById} from './core.js?v=11';
 import {regenerateScenario} from './scenario.js?v=5';
-import {tr} from './i18n.js?v=4';
+import {tr} from './i18n.js?v=5';
 
 const copy=value=>JSON.parse(JSON.stringify(value));
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

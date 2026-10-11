@@ -354,6 +354,34 @@ test('fiche dépense : suppression directe avec confirmation, annulation et rest
   await click('close-sheet');
 });
 
+test('fiche dépense : menu discret près de Fermer, fermeture extérieure et Échap sans changer les données',async()=>{
+  await click('select-language','fr');
+  const before=saved(),tx=before.transactions.find(tx=>tx.amount<0&&tx.status==='completed'&&!['exchange','savings'].includes(tx.category));
+  await click('transaction',tx.id);
+  const content=sheet(),header=content.slice(content.indexOf('<div class="sheet-header">'),content.indexOf('<div class="detail-hero">'));
+  assert.match(header,/<details class="expense-detail-menu"><summary class="icon-button" aria-label="Options de la dépense">/);
+  assert.doesNotMatch(header,/<details[^>]*\bopen\b/);
+  assert.ok(header.indexOf('expense-detail-menu')<header.indexOf('data-act="close-sheet"'));
+  assert.match(header,/data-act="editor-expense-edit"/);assert.match(header,/data-act="editor-expense-delete"/);
+  assert.doesNotMatch(content,/expense-detail-actions/);
+  const root=elements.get('sheet-root'),query=root.querySelector,queryAll=root.querySelectorAll;
+  let focused=false,prevented=false;
+  const menu={open:true,contains:target=>Boolean(target.insideMenu),querySelector:()=>({focus(){focused=true;}})};
+  const selector='.expense-detail-menu[open]';
+  try{
+    root.querySelector=value=>value===selector&&menu.open?menu:query.call(root,value);
+    root.querySelectorAll=value=>value===selector&&menu.open?[menu]:queryAll.call(root,value);
+    const target=insideMenu=>({insideMenu,classList:{contains:()=>false},closest:()=>null});
+    await events.get('click')({target:target(true)});assert.equal(menu.open,true);
+    await events.get('click')({target:target(false)});assert.equal(menu.open,false);assert.equal(sheet(),content);
+    menu.open=true;events.get('keydown')({key:'Escape',preventDefault(){prevented=true;}});
+    assert.equal(menu.open,false);assert.equal(focused,true);assert.equal(prevented,true);assert.equal(sheet(),content);
+  }finally{root.querySelector=query;root.querySelectorAll=queryAll;}
+  assert.deepEqual(saved(),before);
+  await click('select-language','en');await click('transaction',tx.id);assert.match(sheet(),/aria-label="Expense options"/);assert.match(sheet(),/aria-label="Expense actions"/);
+  await click('select-language','fr');await click('close-sheet');
+});
+
 test('export CSV, données valides et verrouillage final',async()=>{
   await click('export');
   assert.match(download.at(-1),/^Flex-DEMO-transactions-/);
